@@ -13,6 +13,8 @@ services:
     build: ./backend
     container_name: znatok-backend
     env_file: .env
+    volumes:
+      - ./backend/uploads:/app/uploads  # ← добавьте эту строку
     depends_on:
       - qdrant
 

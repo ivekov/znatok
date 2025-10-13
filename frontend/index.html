@@ -1,88 +1,416 @@
 <!DOCTYPE html>
-<html lang="ru" data-bs-theme="dark">
+<html lang="ru" data-theme="dark">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Знаток — ИИ-ассистент</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-  <link rel="stylesheet" href="style.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Знаток • AI Ассистент</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
 </head>
-<body class="d-flex flex-column vh-100 bg-body">
-
-  <nav class="navbar navbar-expand navbar-dark bg-primary">
-    <div class="container-fluid">
-      <span class="navbar-brand mb-0 h1">🧠 Знаток</span>
-      <button class="btn btn-sm btn-outline-light" id="theme-toggle">Тёмная тема</button>
-    </div>
-  </nav>
-
-  <div class="container-fluid flex-grow-1 d-flex">
-    <!-- Вкладки -->
-    <div class="nav flex-column nav-pills me-3 mt-3" role="tablist">
-      <button class="nav-link active" data-bs-toggle="pill" data-bs-target="#chat-tab">Чат</button>
-      <button class="nav-link" data-bs-toggle="pill" data-bs-target="#docs-tab">Документы</button>
+<body>
+    <!-- Background Elements -->
+    <div class="bg-gradient"></div>
+    <div class="floating-shapes">
+        <div class="shape shape-1"></div>
+        <div class="shape shape-2"></div>
+        <div class="shape shape-3"></div>
     </div>
 
-    <!-- Содержимое вкладок -->
-    <div class="tab-content flex-grow-1 overflow-auto p-3">
-      
-      <!-- Чат -->
-      <div class="tab-pane fade show active" id="chat-tab">
-        <div id="chat-container" class="h-100"></div>
-        <div class="mt-3">
-          <div class="input-group">
-            <input type="text" id="question-input" class="form-control" placeholder="Задайте вопрос по документам компании...">
-            <button class="btn btn-primary" id="send-btn">Отправить</button>
-          </div>
-          <small class="form-text text-muted mt-2">
-            Пример: «Как оформить командировку?»
-          </small>
-        </div>
-      </div>
+    <!-- Main Container -->
+    <div class="app-container">
+        <!-- Header -->
+        <header class="app-header">
+            <div class="header-content">
+                <div class="brand">
+                    <div class="logo">
+                        <img src="/logo_z.png" class="logo_img" style="max-width:100%;">
+                    </div>
+                    <h1 class="brand-name">Знаток</h1>
+                    <span class="ai-badge">AI</span>
+                </div>
+                
+                <nav class="main-nav">
+                    <div class="nav-group">
+                        <button class="nav-btn active" data-section="chat">
+                            <i class="bi bi-chat-dots-fill"></i>
+                            <span>Чат</span>
+                        </button>
+                        <button class="nav-btn" data-section="documents">
+                            <i class="bi bi-stack"></i>
+                            <span>Документы</span>
+                        </button>
+                    </div>
+                    <div class="nav-group">
+                        <button class="nav-btn" data-section="integrations">
+                            <i class="bi bi-plug"></i>
+                            <span>Интеграции</span>
+                        </button>
+                        <button class="nav-btn" data-section="sources">
+                            <i class="bi bi-database"></i>
+                            <span>Источники</span>
+                        </button>
+                    </div>
+                </nav>
 
-      <!-- Документы -->
-      <div class="tab-pane fade" id="docs-tab">
-        <h5 class="mb-3">Управление документами</h5>
-
-        <!-- Форма загрузки -->
-        <div class="card mb-4">
-          <div class="card-body">
-            <h6>Загрузить новый документ</h6>
-            <div class="mb-3">
-              <label class="form-label">Файл (PDF, DOCX, TXT)</label>
-              <input type="file" id="file-input" class="form-control" accept=".pdf,.docx,.txt">
+                <div class="header-actions">
+                    <button class="theme-toggle" id="themeToggle">
+                        <i class="bi bi-sun"></i>
+                    </button>
+                    <div class="user-menu">
+                        <div class="user-avatar">
+                            <i class="bi bi-person-circle"></i>
+                        </div>
+                        <span class="user-name">Администратор</span>
+                    </div>
+                </div>
             </div>
-            <div class="mb-3">
-              <label class="form-label">Отдел (для фильтрации)</label>
-              <select id="department-select" class="form-select">
-                <option value="all">Все</option>
-                <option value="hr">HR</option>
-                <option value="finance">Финансы</option>
-                <option value="it">IT</option>
-                <option value="legal">Юридический</option>
-              </select>
-            </div>
-            <button id="upload-btn" class="btn btn-success">Загрузить и проиндексировать</button>
-            <div id="upload-status" class="mt-2"></div>
-          </div>
-        </div>
+        </header>
 
-        <!-- Список документов -->
-        <div class="card">
-          <div class="card-body">
-            <h6>Загруженные документы</h6>
-            <div id="documents-list">
-              <p class="text-muted">Загрузка списка...</p>
-            </div>
-          </div>
-        </div>
-      </div>
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Chat Section -->
+            <section id="chat-section" class="content-section active">
+                <div class="section-header">
+                    <h2><i class="bi bi-chat-dots-fill"></i>AI Чат-помощник</h2>
+                    <div class="header-actions">
+                        <button class="btn-glass" id="clear-chat">
+                            <i class="bi bi-trash"></i>
+                            Очистить
+                        </button>
+                        <button class="btn-glass" id="export-chat">
+                            <i class="bi bi-download"></i>
+                            Экспорт
+                        </button>
+                    </div>
+                </div>
 
+                <div class="chat-container">
+                    <div class="chat-messages" id="chat-messages">
+                        <div class="welcome-message">
+                            <div class="welcome-card">
+                                <div class="ai-avatar">
+                                    <i class="bi bi-cpu"></i>
+                                </div>
+                                <h3>Добро пожаловать в Знаток!</h3>
+                                <p>Задайте вопрос о внутренних документах, и я найду нужную информацию с помощью AI</p>
+                                <div class="suggestions">
+                                    <button class="suggestion-chip">Политика удаленной работы</button>
+                                    <button class="suggestion-chip">Отпуск и больничные</button>
+                                    <button class="suggestion-chip">ИТ безопасность</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="chat-input-container">
+                        <div class="input-wrapper">
+                            <textarea 
+                                id="message-input" 
+                                placeholder="Задайте ваш вопрос..." 
+                                rows="1"
+                            ></textarea>
+                            <button class="send-btn" id="send-message">
+                                <i class="bi bi-send-fill"></i>
+                            </button>
+                        </div>
+                        <div class="input-hint">
+                            <i class="bi bi-lightning"></i>
+                            Нажмите Enter для отправки, Shift+Enter для новой строки
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Documents Section -->
+            <section id="documents-section" class="content-section">
+                <div class="section-header">
+                    <h2><i class="bi bi-stack"></i>Управление документами</h2>
+                    <button class="btn-primary" id="upload-documents">
+                        <i class="bi bi-cloud-upload"></i>
+                        Загрузить документы
+                    </button>
+                </div>
+
+                <div class="documents-grid">
+                    <!-- Document Card -->
+                    <div class="document-card">
+                        <div class="doc-icon pdf">
+                            <i class="bi bi-file-earmark-pdf"></i>
+                        </div>
+                        <div class="doc-content">
+                            <h4>Политика удаленной работы</h4>
+                            <p class="doc-meta">HR • 2.1 МБ • 15 янв 2024</p>
+                            <div class="doc-tags">
+                                <span class="tag">политика</span>
+                                <span class="tag">удаленка</span>
+                            </div>
+                        </div>
+                        <div class="doc-actions">
+                            <button class="action-btn">
+                                <i class="bi bi-eye"></i>
+                            </button>
+                            <button class="action-btn">
+                                <i class="bi bi-download"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="document-card">
+                        <div class="doc-icon docx">
+                            <i class="bi bi-file-earmark-word"></i>
+                        </div>
+                        <div class="doc-content">
+                            <h4>Инструкция по ИБ</h4>
+                            <p class="doc-meta">IT • 1.5 МБ • 14 янв 2024</p>
+                            <div class="doc-tags">
+                                <span class="tag">инструкция</span>
+                                <span class="tag">безопасность</span>
+                            </div>
+                        </div>
+                        <div class="doc-actions">
+                            <button class="action-btn">
+                                <i class="bi bi-eye"></i>
+                            </button>
+                            <button class="action-btn">
+                                <i class="bi bi-download"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="document-card">
+                        <div class="doc-icon xlsx">
+                            <i class="bi bi-file-earmark-excel"></i>
+                        </div>
+                        <div class="doc-content">
+                            <h4>Финансовый отчет 2023</h4>
+                            <p class="doc-meta">Финансы • 5.2 МБ • 13 янв 2024</p>
+                            <div class="doc-tags">
+                                <span class="tag">отчет</span>
+                                <span class="tag">финансы</span>
+                            </div>
+                        </div>
+                        <div class="doc-actions">
+                            <button class="action-btn">
+                                <i class="bi bi-eye"></i>
+                            </button>
+                            <button class="action-btn">
+                                <i class="bi bi-download"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Integrations Section -->
+            <section id="integrations-section" class="content-section">
+                <div class="section-header">
+                    <h2><i class="bi bi-plug"></i>Интеграции с мессенджерами</h2>
+                </div>
+
+                <div class="integrations-grid">
+                    <!-- Telegram Integration -->
+                    <div class="integration-card active">
+                        <div class="integration-header">
+                            <div class="integration-icon telegram">
+                                <i class="bi bi-telegram"></i>
+                            </div>
+                            <div class="integration-info">
+                                <h4>Telegram</h4>
+                                <p>Мессенджер для сотрудников</p>
+                            </div>
+                            <label class="switch">
+                                <input type="checkbox" checked>
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                        <div class="integration-config">
+                            <div class="config-field">
+                                <label>Токен бота</label>
+                                <input type="password" placeholder="Введите токен бота" value="••••••••••">
+                            </div>
+                            <button class="btn-outline">
+                                <i class="bi bi-check-circle"></i>
+                                Сохранить
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Bitrix24 Integration -->
+                    <div class="integration-card">
+                        <div class="integration-header">
+                            <div class="integration-icon bitrix">
+                                <i class="bi bi-briefcase"></i>
+                            </div>
+                            <div class="integration-info">
+                                <h4>Bitrix24</h4>
+                                <p>Корпоративный портал</p>
+                            </div>
+                            <label class="switch">
+                                <input type="checkbox">
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- VK Work Integration -->
+                    <div class="integration-card active">
+                        <div class="integration-header">
+                            <div class="integration-icon vk">
+                                <i class="bi bi-chat-square-text"></i>
+                            </div>
+                            <div class="integration-info">
+                                <h4>VK Work</h4>
+                                <p>Корпоративное общение</p>
+                            </div>
+                            <label class="switch">
+                                <input type="checkbox" checked>
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Mattermost Integration -->
+                    <div class="integration-card">
+                        <div class="integration-header">
+                            <div class="integration-icon mattermost">
+                                <i class="bi bi-slack"></i>
+                            </div>
+                            <div class="integration-info">
+                                <h4>Mattermost</h4>
+                                <p>Командная платформа</p>
+                            </div>
+                            <label class="switch">
+                                <input type="checkbox">
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Sources Section -->
+            <section id="sources-section" class="content-section">
+                <div class="section-header">
+                    <h2><i class="bi bi-database"></i>Источники данных</h2>
+                    <button class="btn-primary" id="add-source">
+                        <i class="bi bi-plus-circle"></i>
+                        Добавить источник
+                    </button>
+                </div>
+
+                <div class="sources-grid">
+                    <!-- File System -->
+                    <div class="source-card online">
+                        <div class="source-header">
+                            <div class="source-icon">
+                                <i class="bi bi-folder2-open"></i>
+                            </div>
+                            <div class="source-info">
+                                <h4>Файловая система</h4>
+                                <p>Локальные документы</p>
+                            </div>
+                            <span class="status-badge online">Online</span>
+                        </div>
+                        <div class="source-stats">
+                            <div class="stat">
+                                <span class="stat-value">156</span>
+                                <span class="stat-label">файлов</span>
+                            </div>
+                            <div class="stat">
+                                <span class="stat-value">2.4 ГБ</span>
+                                <span class="stat-label">данных</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Confluence -->
+                    <div class="source-card error">
+                        <div class="source-header">
+                            <div class="source-icon">
+                                <i class="bi bi-globe"></i>
+                            </div>
+                            <div class="source-info">
+                                <h4>Confluence</h4>
+                                <p>База знаний</p>
+                            </div>
+                            <span class="status-badge error">Error</span>
+                        </div>
+                        <div class="source-stats">
+                            <div class="stat">
+                                <span class="stat-value">12</span>
+                                <span class="stat-label">пространств</span>
+                            </div>
+                            <div class="stat">
+                                <span class="stat-value">5 д.</span>
+                                <span class="stat-label">назад</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- SharePoint -->
+                    <div class="source-card offline">
+                        <div class="source-header">
+                            <div class="source-icon">
+                                <i class="bi bi-share"></i>
+                            </div>
+                            <div class="source-info">
+                                <h4>SharePoint</h4>
+                                <p>Корпоративный портал</p>
+                            </div>
+                            <span class="status-badge offline">Offline</span>
+                        </div>
+                    </div>
+
+                    <!-- Notion -->
+                    <div class="source-card online">
+                        <div class="source-header">
+                            <div class="source-icon">
+                                <i class="bi bi-journal-text"></i>
+                            </div>
+                            <div class="source-info">
+                                <h4>Notion</h4>
+                                <p>Рабочие пространства</p>
+                            </div>
+                            <span class="status-badge online">Online</span>
+                        </div>
+                        <div class="source-stats">
+                            <div class="stat">
+                                <span class="stat-value">24</span>
+                                <span class="stat-label">базы</span>
+                            </div>
+                            <div class="stat">
+                                <span class="stat-value">1 ч.</span>
+                                <span class="stat-label">назад</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
     </div>
-  </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-  <script src="chat.js"></script>
-  <script src="documents.js"></script>
+    <!-- Upload Modal -->
+    <div class="modal-overlay" id="uploadModal">
+        <div class="modal-container">
+            <div class="modal-header">
+                <h3><i class="bi bi-cloud-upload"></i>Загрузка документов</h3>
+                <button class="modal-close" data-modal="uploadModal">
+                    <i class="bi bi-x"></i>
+                </button>
+            </div>
+            <div class="modal-content">
+                <div class="upload-zone" id="uploadZone">
+                    <i class="bi bi-cloud-arrow-up"></i>
+                    <p>Перетащите файлы сюда или нажмите для выбора</p>
+                    <input type="file" id="fileInput" multiple style="display: none;">
+                    <button class="btn-outline" id="browseFiles">
+                        Выбрать файлы
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/js/app.js"></script>
 </body>
 </html>
