@@ -83,30 +83,26 @@ async def upload_files(
 ):
     uploaded_files = []
     for file in files:
-        # Валидация типа
         if file.content_type not in [
             "application/pdf",
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             "text/plain"
-        ]:
+        ] and not file.filename.lower().endswith('.txt'):  # fallback для txt
             raise HTTPException(status_code=400, detail=f"Неподдерживаемый тип: {file.filename}")
 
-        # Сохранение файла
         safe_filename = f"{hash(file.filename)}_{file.filename}"
         filepath = os.path.join(UPLOAD_DIR, safe_filename)
         with open(filepath, "wb") as f:
             f.write(await file.read())
 
-        # Регистрация в хранилище
         doc_id = add_document(file.filename, department, filepath)
 
-        # Индексация
         try:
             chunks_count = index_document(filepath, file.filename, department, doc_id)
-            logger.info(f"Файл {file.filename} проиндексирован ({chunks_count} чанков)")
         except Exception as e:
-            logger.error(f"Ошибка индексации {file.filename}: {e}")
-            # Можно удалить из хранилища, но оставим для отладки
+            # Важно: не прерываем загрузку других файлов
+            logger.error(f"Пропускаем файл {file.filename} из-за ошибки: {e}")
+            continue
 
         uploaded_files.append(file.filename)
 

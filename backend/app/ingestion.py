@@ -1,20 +1,24 @@
 # backend/app/ingestion.py
 import os
+import uuid
+import logging
 from typing import List
 from qdrant_client import QdrantClient
 from qdrant_client.models import PointStruct, VectorParams, Distance
-from unstructured.partition.auto import partition
 from sentence_transformers import SentenceTransformer
 
-# Глобальная модель эмбеддингов (загружается один раз)
+logger = logging.getLogger("znatok.ingestion")
+
+# Глобальные объекты
 _EMBEDDING_MODEL = None
 _QDRANT_CLIENT = None
 
 def get_embedding_model():
     global _EMBEDDING_MODEL
     if _EMBEDDING_MODEL is None:
-        # Используем multilingual модель — отлично работает с русским
+        logger.info("Загрузка модели эмбеддингов...")
         _EMBEDDING_MODEL = SentenceTransformer('intfloat/multilingual-e5-large')
+        logger.info("Модель загружена.")
     return _EMBEDDING_MODEL
 
 def get_qdrant_client():
@@ -28,40 +32,64 @@ def get_qdrant_client():
 def ensure_collection_exists(collection_name: str):
     client = get_qdrant_client()
     if not client.collection_exists(collection_name):
+        logger.info(f"Создаём коллекцию {collection_name}")
         client.create_collection(
             collection_name=collection_name,
             vectors_config=VectorParams(size=1024, distance=Distance.COSINE)
         )
 
 def chunk_text(text: str, max_length: int = 512) -> List[str]:
-    """Простая разбивка на чанки по предложениям."""
+    """Разбивка текста на чанки по предложениям."""
     import re
+    if not text.strip():
+        return []
     sentences = re.split(r'(?<=[.!?])\s+', text)
     chunks = []
-    current_chunk = ""
+    current = ""
     for sent in sentences:
-        if len(current_chunk) + len(sent) < max_length:
-            current_chunk += " " + sent
+        if len(current) + len(sent) < max_length:
+            current += " " + sent
         else:
-            if current_chunk:
-                chunks.append(current_chunk.strip())
-            current_chunk = sent
-    if current_chunk:
-        chunks.append(current_chunk.strip())
-    return chunks or [text]
+            if current:
+                chunks.append(current.strip())
+            current = sent
+    if current:
+        chunks.append(current.strip())
+    return chunks or [text[:max_length]]
+
+def read_text_file(filepath: str) -> str:
+    """Надёжное чтение TXT-файла с разными кодировками."""
+    encodings = ['utf-8', 'cp1251', 'iso-8859-1']
+    for enc in encodings:
+        try:
+            with open(filepath, 'r', encoding=enc) as f:
+                return f.read()
+        except UnicodeDecodeError:
+            continue
+    # Если все кодировки провалились — читаем как бинарник
+    with open(filepath, 'rb') as f:
+        return f.read().decode('utf-8', errors='replace')
 
 def index_document(filepath: str, filename: str, department: str, doc_id: str):
-    """Извлекает текст, разбивает на чанки, индексирует в Qdrant."""
+    """Индексирует документ в Qdrant."""
     try:
         # Извлечение текста
-        elements = partition(filename=filepath)
-        text = "\n".join([str(el) for el in elements])
+        text = ""
+        if filename.lower().endswith('.txt'):
+            text = read_text_file(filepath)
+        else:
+            # Для PDF/DOCX используем unstructured
+            from unstructured.partition.auto import partition
+            elements = partition(filename=filepath)
+            text = "\n".join([str(el) for el in elements])
         
         if not text.strip():
-            raise ValueError("Пустой документ")
+            raise ValueError("Пустой текст после извлечения")
 
         # Разбивка на чанки
         chunks = chunk_text(text)
+        if not chunks:
+            raise ValueError("Нет чанков для индексации")
 
         # Эмбеддинги
         model = get_embedding_model()
@@ -69,7 +97,7 @@ def index_document(filepath: str, filename: str, department: str, doc_id: str):
 
         # Подготовка точек
         points = []
-        for i, (chunk, emb) in enumerate(zip(chunks, embeddings)):
+        for chunk, emb in zip(chunks, embeddings):
             points.append(PointStruct(
                 id=str(uuid.uuid4()),
                 vector=emb,
@@ -77,8 +105,7 @@ def index_document(filepath: str, filename: str, department: str, doc_id: str):
                     "text": chunk,
                     "source": filename,
                     "department": department,
-                    "doc_id": doc_id,
-                    "chunk_index": i
+                    "doc_id": doc_id
                 }
             ))
 
@@ -88,7 +115,9 @@ def index_document(filepath: str, filename: str, department: str, doc_id: str):
         client = get_qdrant_client()
         client.upsert(collection_name=collection, points=points)
 
+        logger.info(f"Успешно проиндексировано {len(chunks)} чанков из {filename}")
         return len(chunks)
+
     except Exception as e:
-        print(f"Ошибка индексации {filename}: {e}")
+        logger.error(f"КРИТИЧЕСКАЯ ОШИБКА индексации {filename}: {e}", exc_info=True)
         raise

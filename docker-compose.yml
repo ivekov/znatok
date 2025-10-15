@@ -15,6 +15,7 @@ services:
     env_file: .env
     volumes:
       - ./backend/uploads:/app/uploads  # ← добавьте эту строку
+      - huggingface_cache:/root/.cache/huggingface  # ← добавили эту строку
     depends_on:
       - qdrant
 
@@ -31,3 +32,4 @@ services:
 
 volumes:
   qdrant_storage:
+  huggingface_cache:  # ← добавили этот volume

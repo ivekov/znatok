@@ -131,73 +131,9 @@
                     </button>
                 </div>
 
-                <div class="documents-grid">
-                    <!-- Document Card -->
-                    <div class="document-card">
-                        <div class="doc-icon pdf">
-                            <i class="bi bi-file-earmark-pdf"></i>
-                        </div>
-                        <div class="doc-content">
-                            <h4>Политика удаленной работы</h4>
-                            <p class="doc-meta">HR • 2.1 МБ • 15 янв 2024</p>
-                            <div class="doc-tags">
-                                <span class="tag">политика</span>
-                                <span class="tag">удаленка</span>
-                            </div>
-                        </div>
-                        <div class="doc-actions">
-                            <button class="action-btn">
-                                <i class="bi bi-eye"></i>
-                            </button>
-                            <button class="action-btn">
-                                <i class="bi bi-download"></i>
-                            </button>
-                        </div>
-                    </div>
-
-                    <div class="document-card">
-                        <div class="doc-icon docx">
-                            <i class="bi bi-file-earmark-word"></i>
-                        </div>
-                        <div class="doc-content">
-                            <h4>Инструкция по ИБ</h4>
-                            <p class="doc-meta">IT • 1.5 МБ • 14 янв 2024</p>
-                            <div class="doc-tags">
-                                <span class="tag">инструкция</span>
-                                <span class="tag">безопасность</span>
-                            </div>
-                        </div>
-                        <div class="doc-actions">
-                            <button class="action-btn">
-                                <i class="bi bi-eye"></i>
-                            </button>
-                            <button class="action-btn">
-                                <i class="bi bi-download"></i>
-                            </button>
-                        </div>
-                    </div>
-
-                    <div class="document-card">
-                        <div class="doc-icon xlsx">
-                            <i class="bi bi-file-earmark-excel"></i>
-                        </div>
-                        <div class="doc-content">
-                            <h4>Финансовый отчет 2023</h4>
-                            <p class="doc-meta">Финансы • 5.2 МБ • 13 янв 2024</p>
-                            <div class="doc-tags">
-                                <span class="tag">отчет</span>
-                                <span class="tag">финансы</span>
-                            </div>
-                        </div>
-                        <div class="doc-actions">
-                            <button class="action-btn">
-                                <i class="bi bi-eye"></i>
-                            </button>
-                            <button class="action-btn">
-                                <i class="bi bi-download"></i>
-                            </button>
-                        </div>
-                    </div>
+                <div id="documents-list-container">
+                    <!-- Список будет подгружаться сюда -->
+                    <p class="text-muted">Загрузка списка документов...</p>
                 </div>
             </section>
 
@@ -402,10 +338,9 @@
                 <div class="upload-zone" id="uploadZone">
                     <i class="bi bi-cloud-arrow-up"></i>
                     <p>Перетащите файлы сюда или нажмите для выбора</p>
-                    <input type="file" id="fileInput" multiple style="display: none;">
-                    <button class="btn-outline" id="browseFiles">
-                        Выбрать файлы
-                    </button>
+                    <input type="file" id="fileInput" multiple accept=".pdf,.docx,.txt" style="display: none;">
+                    <button class="btn-outline" id="browseFiles">Выбрать файлы</button>
+                    <button class="btn-primary mt-3" id="confirmUpload">Загрузить</button>
                 </div>
             </div>
         </div>

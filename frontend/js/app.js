@@ -12,6 +12,10 @@ class ZnatokApp {
         this.bindEvents();
         this.loadChatHistory();
         this.autoResizeTextarea();
+        // Загружаем документы при старте, если открыта вкладка
+        if (this.currentSection === 'documents') {
+            this.loadDocuments();
+        }
     }
 
     setTheme(theme) {
@@ -65,6 +69,10 @@ class ZnatokApp {
             document.getElementById('fileInput').click();
         });
 
+        document.getElementById('confirmUpload').addEventListener('click', () => {
+            this.uploadFiles();
+        });
+
         document.getElementById('uploadZone').addEventListener('dragover', (e) => {
             e.preventDefault();
             e.currentTarget.style.borderColor = 'var(--accent-primary)';
@@ -91,7 +99,6 @@ class ZnatokApp {
             });
         });
 
-        // Close modal on overlay click
         document.querySelectorAll('.modal-overlay').forEach(overlay => {
             overlay.addEventListener('click', (e) => {
                 if (e.target === e.currentTarget) {
@@ -110,82 +117,63 @@ class ZnatokApp {
     }
 
     switchSection(sectionName) {
-        // Update navigation
         document.querySelectorAll('.nav-btn').forEach(btn => {
             btn.classList.remove('active');
         });
         document.querySelector(`[data-section="${sectionName}"]`).classList.add('active');
 
-        // Update sections
         document.querySelectorAll('.content-section').forEach(section => {
             section.classList.remove('active');
         });
         document.getElementById(`${sectionName}-section`).classList.add('active');
 
         this.currentSection = sectionName;
+
+        // Загружаем документы при переходе на вкладку
+        if (sectionName === 'documents') {
+            this.loadDocuments();
+        }
     }
 
     async sendMessage() {
         const input = document.getElementById('message-input');
         const message = input.value.trim();
-        
         if (!message) return;
 
-        // Add user message to chat
         this.addMessage('user', message);
         input.value = '';
         this.autoResizeTextarea();
-
-        // Show typing indicator
         this.showTypingIndicator();
 
         try {
             const response = await fetch('/api/ask', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    question: message,
-                    user_department: 'all' // можно заменить на выбор отдела из UI
-                })
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ question: message, user_department: 'all' })
             });
 
-            // Remove typing indicator
             this.removeTypingIndicator();
-
-            if (!response.ok) {
-                throw new Error(`Ошибка сервера: ${response.status}`);
-            }
+            if (!response.ok) throw new Error(`Ошибка: ${response.status}`);
 
             const data = await response.json();
             let answerHtml = data.answer;
-
-            // Добавляем источники, если есть
-            if (data.sources && data.sources.length > 0) {
+            if (data.sources?.length) {
                 const sourcesHtml = data.sources.map(src =>
                     `<span class="source-chip">${this.escapeHtml(src.source)}</span>`
                 ).join('');
                 answerHtml += `<div class="message-sources mt-2">${sourcesHtml}</div>`;
             }
-
             this.addMessage('assistant', answerHtml);
             
         } catch (error) {
             this.removeTypingIndicator();
-            this.addMessage('system', `❌ Ошибка: ${error.message}. Проверьте подключение к серверу.`);
-            console.error('Chat API error:', error);
+            this.addMessage('system', `❌ ${error.message}`);
+            console.error('Chat error:', error);
         }
     }
 
     addMessage(role, content) {
-        const message = {
-            id: Date.now(),
-            role,
-            content,
-            timestamp: new Date()
-        };
-        
+        const message = { id: Date.now(), role, content, timestamp: new Date() };
         this.chatHistory.push(message);
         this.renderMessage(message);
         this.saveChatHistory();
@@ -193,28 +181,20 @@ class ZnatokApp {
     }
 
     renderMessage(message) {
-        const messagesContainer = document.getElementById('chat-messages');
-        
-        // Remove welcome message if it's the first user message
+        const container = document.getElementById('chat-messages');
         if (message.role === 'user') {
-            const welcomeMessage = messagesContainer.querySelector('.welcome-message');
-            if (welcomeMessage) {
-                welcomeMessage.remove();
-            }
+            const welcome = container.querySelector('.welcome-message');
+            if (welcome) welcome.remove();
         }
 
-        const messageElement = document.createElement('div');
-        messageElement.className = `message ${message.role}-message`;
-        messageElement.innerHTML = this.getMessageHTML(message);
-        messagesContainer.appendChild(messageElement);
+        const el = document.createElement('div');
+        el.className = `message ${message.role}-message`;
+        el.innerHTML = this.getMessageHTML(message);
+        container.appendChild(el);
     }
 
     getMessageHTML(message) {
-        const time = message.timestamp.toLocaleTimeString('ru-RU', { 
-            hour: '2-digit', 
-            minute: '2-digit' 
-        });
-
+        const time = 'Рандомное время';
         return `
             <div class="message-bubble ${message.role}">
                 <div class="message-content">${this.formatMessageContent(message.content)}</div>
@@ -224,7 +204,6 @@ class ZnatokApp {
     }
 
     formatMessageContent(content) {
-        // Convert basic markdown to HTML
         return content
             .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
             .replace(/\*(.*?)\*/g, '<em>$1</em>')
@@ -232,30 +211,12 @@ class ZnatokApp {
             .replace(/\n/g, '<br>');
     }
 
-    generateAIResponse(question) {
-        const responses = {
-            'политика удаленной работы': `**Политика удаленной работы** позволяет сотрудникам работать из дома при соблюдении условий:\n\n• Стаж в компании от 6 месяцев\n• Согласование с руководителем\n• Наличие необходимого оборудования\n• Ежедневные стендапы в 10:00\n\nПолный документ доступен в разделе "Документы".`,
-            'отпуск и больничные': `**Отпуск и больничные** оформляются согласно трудовому кодексу:\n\n• Ежегодный отпуск - 28 календарных дней\n• Больничные оплачиваются с первого дня\n• Заявление на отпуск за 2 недели\n• Документы для больничного в HR отделе`,
-            'ит безопасность': `**Политика информационной безопасности** включает:\n\n• Обязательная двухфакторная аутентификация\n• Регулярная смена паролей (90 дней)\n• Шифрование конфиденциальных данных\n• Запрет личных облачных хранилищ\n\nПодробнее в документе "Инструкция по ИБ".`
-        };
-
-        const lowerQuestion = question.toLowerCase();
-        for (const [key, response] of Object.entries(responses)) {
-            if (lowerQuestion.includes(key)) {
-                return response;
-            }
-        }
-
-        // Default response for unknown questions
-        return `На основе внутренних документов, я нашел следующую информацию:\n\n**${question}**\n\nВ нашей компании этот вопрос регулируется корпоративными политиками. Для получения точной информации рекомендую обратиться к соответствующим документам в разделе "Документы" или уточнить у ответственного сотрудника.`;
-    }
-
     showTypingIndicator() {
-        const messagesContainer = document.getElementById('chat-messages');
-        const typingElement = document.createElement('div');
-        typingElement.className = 'message assistant-message typing';
-        typingElement.id = 'typing-indicator';
-        typingElement.innerHTML = `
+        const container = document.getElementById('chat-messages');
+        const el = document.createElement('div');
+        el.className = 'message assistant-message typing';
+        el.id = 'typing-indicator';
+        el.innerHTML = `
             <div class="message-bubble assistant">
                 <div class="typing-indicator">
                     <span>Знаток печатает</span>
@@ -267,28 +228,24 @@ class ZnatokApp {
                 </div>
             </div>
         `;
-        messagesContainer.appendChild(typingElement);
+        container.appendChild(el);
         this.scrollToBottom();
     }
 
     removeTypingIndicator() {
-        const typingElement = document.getElementById('typing-indicator');
-        if (typingElement) {
-            typingElement.remove();
-        }
+        const el = document.getElementById('typing-indicator');
+        if (el) el.remove();
     }
 
     clearChat() {
-        if (confirm('Вы уверены, что хотите очистить историю чата?')) {
+        if (confirm('Очистить историю чата?')) {
             this.chatHistory = [];
             document.getElementById('chat-messages').innerHTML = `
                 <div class="welcome-message">
                     <div class="welcome-card">
-                        <div class="ai-avatar">
-                            <i class="bi bi-cpu"></i>
-                        </div>
+                        <div class="ai-avatar"><i class="bi bi-cpu"></i></div>
                         <h3>Добро пожаловать в Знаток!</h3>
-                        <p>Задайте вопрос о внутренних документах, и я найду нужную информацию с помощью AI</p>
+                        <p>Задайте вопрос о внутренних документах</p>
                         <div class="suggestions">
                             <button class="suggestion-chip">Политика удаленной работы</button>
                             <button class="suggestion-chip">Отпуск и больничные</button>
@@ -302,11 +259,10 @@ class ZnatokApp {
     }
 
     exportChat() {
-        const chatText = this.chatHistory.map(msg => 
-            `${msg.role.toUpperCase()} (${msg.timestamp.toLocaleString()}): ${msg.content}`
+        const text = this.chatHistory.map(msg => 
+            `${msg.role}: ${msg.content}`
         ).join('\n\n');
-        
-        const blob = new Blob([chatText], { type: 'text/plain' });
+        const blob = new Blob([text], { type: 'text/plain' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
@@ -316,8 +272,8 @@ class ZnatokApp {
     }
 
     scrollToBottom() {
-        const messagesContainer = document.getElementById('chat-messages');
-        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        const container = document.getElementById('chat-messages');
+        container.scrollTop = container.scrollHeight;
     }
 
     saveChatHistory() {
@@ -326,12 +282,9 @@ class ZnatokApp {
 
     loadChatHistory() {
         if (this.chatHistory.length > 0) {
-            const messagesContainer = document.getElementById('chat-messages');
-            messagesContainer.innerHTML = '';
-            
-            this.chatHistory.forEach(msg => {
-                this.renderMessage(msg);
-            });
+            const container = document.getElementById('chat-messages');
+            container.innerHTML = '';
+            this.chatHistory.forEach(msg => this.renderMessage(msg));
             this.scrollToBottom();
         }
     }
@@ -352,29 +305,105 @@ class ZnatokApp {
 
     handleFileDrop(files) {
         if (files.length === 0) return;
-
-        const fileInput = document.getElementById('fileInput');
-        const departmentSelect = document.getElementById('departmentSelect');
-        
-        if (!fileInput || !departmentSelect) {
-            this.showNotification('Форма загрузки недоступна', 'error');
-            return;
-        }
-
-        // Устанавливаем файлы в input (для валидации)
         const dataTransfer = new DataTransfer();
         for (let file of files) {
-            // Проверка типа файла (опционально на фронтенде)
             if (!['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain'].includes(file.type)) {
                 this.showNotification('Поддерживаются только PDF, DOCX, TXT', 'error');
                 return;
             }
             dataTransfer.items.add(file);
         }
-        fileInput.files = dataTransfer.files;
+        document.getElementById('fileInput').files = dataTransfer.files;
+    }
 
-        // Отправляем на сервер
-        this.uploadFiles();
+    async uploadFiles() {
+        const fileInput = document.getElementById('fileInput');
+        const files = fileInput.files;
+        if (files.length === 0) {
+            this.showNotification('Выберите файлы', 'warning');
+            return;
+        }
+
+        const formData = new FormData();
+        for (let file of files) {
+            formData.append('files', file);
+        }
+        formData.append('department', 'all'); // без фильтрации
+
+        try {
+            this.showNotification('Загрузка...', 'info');
+            const response = await fetch('/api/upload', { method: 'POST', body: formData });
+            if (response.ok) {
+                this.showNotification('✅ Документы загружены!', 'success');
+                this.hideModal('uploadModal');
+                fileInput.value = '';
+                if (this.currentSection === 'documents') {
+                    this.loadDocuments(); // обновить список
+                }
+            } else {
+                const error = await response.text();
+                this.showNotification(`❌ ${error}`, 'error');
+            }
+        } catch (error) {
+            this.showNotification(`❌ Ошибка сети`, 'error');
+            console.error('Upload error:', error);
+        }
+    }
+
+    async loadDocuments() {
+        const container = document.getElementById('documents-list-container');
+        container.innerHTML = '<p class="text-muted">Загрузка...</p>';
+
+        try {
+            const response = await fetch('/api/documents');
+            if (!response.ok) throw new Error('Не удалось загрузить');
+            const docs = await response.json();
+
+            if (docs.length === 0) {
+                container.innerHTML = '<p class="text-muted">Нет загруженных документов.</p>';
+                return;
+            }
+
+            const html = docs.map(doc => `
+                <div class="document-card">
+                    <div class="doc-icon pdf">
+                        <i class="bi bi-file-earmark"></i>
+                    </div>
+                    <div class="doc-content">
+                        <h4>${this.escapeHtml(doc.filename)}</h4>
+                        <p class="doc-meta">${new Date(doc.uploaded_at).toLocaleDateString('ru-RU')}</p>
+                    </div>
+                    <div class="doc-actions">
+                        <button class="action-btn" data-id="${doc.id}" title="Удалить">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+
+            container.innerHTML = html;
+
+            // Обработчик удаления
+            container.querySelectorAll('.action-btn').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    if (!confirm('Удалить документ?')) return;
+                    const id = btn.dataset.id;
+                    try {
+                        const res = await fetch(`/api/documents/${id}`, { method: 'DELETE' });
+                        if (res.ok) {
+                            this.loadDocuments(); // перезагрузить список
+                        } else {
+                            this.showNotification('Ошибка удаления', 'error');
+                        }
+                    } catch (e) {
+                        this.showNotification('Сетевая ошибка', 'error');
+                    }
+                });
+            });
+
+        } catch (error) {
+            container.innerHTML = `<p class="text-danger">Ошибка: ${error.message}</p>`;
+        }
     }
 
     escapeHtml(unsafe) {
@@ -386,49 +415,7 @@ class ZnatokApp {
             .replace(/'/g, "&#039;");
     }
 
-    async uploadFiles() {
-        const fileInput = document.getElementById('fileInput');
-        const departmentSelect = document.getElementById('departmentSelect');
-        
-        const files = fileInput.files;
-        const department = departmentSelect?.value || 'all';
-
-        if (files.length === 0) {
-            this.showNotification('Выберите файлы для загрузки', 'warning');
-            return;
-        }
-
-        const formData = new FormData();
-        for (let file of files) {
-            formData.append('files', file); // FastAPI ожидает list[UploadFile]
-        }
-        formData.append('department', department);
-
-        try {
-            this.showNotification('Загрузка и индексация...', 'info');
-            
-            const response = await fetch('/api/upload', {
-                method: 'POST',
-                body: formData
-            });
-
-            if (response.ok) {
-                this.showNotification('✅ Документы успешно проиндексированы!', 'success');
-                this.hideModal('uploadModal');
-                // Опционально: обновить список документов
-                // this.loadDocuments();
-            } else {
-                const errorText = await response.text();
-                this.showNotification(`❌ Ошибка: ${errorText}`, 'error');
-            }
-        } catch (error) {
-            this.showNotification(`❌ Сетевая ошибка: ${error.message}`, 'error');
-            console.error('Upload error:', error);
-        }
-    }
-
     showNotification(message, type = 'info') {
-        // Create notification element
         const notification = document.createElement('div');
         notification.className = `notification notification-${type}`;
         notification.innerHTML = `
@@ -437,14 +424,8 @@ class ZnatokApp {
                 <span>${message}</span>
             </div>
         `;
-
-        // Add to body
         document.body.appendChild(notification);
-
-        // Animate in
         setTimeout(() => notification.classList.add('show'), 100);
-
-        // Remove after delay
         setTimeout(() => {
             notification.classList.remove('show');
             setTimeout(() => notification.remove(), 300);
@@ -462,7 +443,7 @@ class ZnatokApp {
     }
 }
 
-// Additional CSS for dynamic elements
+// Динамические стили (оставляем как есть)
 const dynamicStyles = `
 .message {
     margin-bottom: 1.5rem;
@@ -610,14 +591,31 @@ const dynamicStyles = `
     border-color: #f59e0b;
     background: rgba(245, 158, 11, 0.1);
 }
+.message-sources {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 1rem;
+}
+.source-chip {
+    background: rgba(255,255,255,0.1);
+    border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 12px;
+    padding: 0.25rem 0.75rem;
+    font-size: 0.85em;
+}
+[data-theme="light"] .source-chip {
+    background: #e0e0e0;
+    border-color: #ccc;
+    color: #333;
+}
 `;
 
-// Add dynamic styles to document
 const styleSheet = document.createElement('style');
 styleSheet.textContent = dynamicStyles;
 document.head.appendChild(styleSheet);
 
-// Initialize the application
+// Инициализация
 document.addEventListener('DOMContentLoaded', () => {
     window.znatokApp = new ZnatokApp();
 });
