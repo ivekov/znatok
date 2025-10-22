@@ -86,7 +86,8 @@ def get_embedding_model():
     global _EMBEDDING_MODEL
     if _EMBEDDING_MODEL is None:
         logger.info("Загрузка модели эмбеддингов...")
-        _EMBEDDING_MODEL = SentenceTransformer('intfloat/multilingual-e5-large')
+        # Используйте (в 3 раза меньше и быстрее)
+        _EMBEDDING_MODEL = SentenceTransformer('sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2')
         logger.info("Модель загружена.")
     return _EMBEDDING_MODEL
 
@@ -121,17 +122,21 @@ def search_qdrant(question: str, department: Optional[str] = None) -> List[dict]
             collection_name=collection,
             query_vector=query_vector,
             query_filter=build_metadata_filter(department),
-            limit=4
+            limit=4  # Ограничиваем количество релевантных чанков
         )
 
-        return [
+        # ФИКС: Возвращаем только чанки с достаточной релевантностью
+        filtered_hits = [
             {
                 "text": hit.payload.get("text", ""),
                 "source": hit.payload.get("source", "неизвестный источник"),
                 "score": hit.score
             }
             for hit in search_result
+            if hit.score > 0.3  # Минимальный порог релевантности
         ]
+
+        return filtered_hits
 
     except Exception as e:
         logger.error(f"Ошибка поиска в Qdrant: {e}", exc_info=True)

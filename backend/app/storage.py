@@ -7,6 +7,10 @@ from datetime import datetime
 DOCUMENTS: List[Dict] = []
 
 def add_document(filename: str, department: str, filepath: str) -> str:
+    global DOCUMENTS
+    # Удаляем старую версию
+    DOCUMENTS = [d for d in DOCUMENTS if d["filename"] != filename]
+    
     doc_id = str(uuid.uuid4())
     DOCUMENTS.append({
         "id": doc_id,

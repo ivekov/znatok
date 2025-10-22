@@ -157,12 +157,15 @@ class ZnatokApp {
 
             const data = await response.json();
             let answerHtml = data.answer;
-            if (data.sources?.length) {
+            
+            // ФИКС: Показываем только реальные источники из ответа API
+            if (data.sources && data.sources.length > 0) {
                 const sourcesHtml = data.sources.map(src =>
                     `<span class="source-chip">${this.escapeHtml(src.source)}</span>`
                 ).join('');
-                answerHtml += `<div class="message-sources mt-2">${sourcesHtml}</div>`;
+                answerHtml += `<div class="message-sources mt-2">Источники: ${sourcesHtml}</div>`;
             }
+            
             this.addMessage('assistant', answerHtml);
             
         } catch (error) {
@@ -194,13 +197,62 @@ class ZnatokApp {
     }
 
     getMessageHTML(message) {
-        const time = 'Рандомное время';
+        const time = this.formatMessageTime(message.timestamp);
         return `
             <div class="message-bubble ${message.role}">
                 <div class="message-content">${this.formatMessageContent(message.content)}</div>
                 <div class="message-time">${time}</div>
             </div>
         `;
+    }
+
+    formatMessageTime(timestamp) {
+        const messageDate = new Date(timestamp);
+        const now = new Date();
+        
+        // Разница в миллисекундах
+        const diffMs = now - messageDate;
+        const diffMins = Math.floor(diffMs / 60000);
+        const diffHours = Math.floor(diffMs / 3600000);
+        const diffDays = Math.floor(diffMs / (3600000 * 24));
+        
+        // Сегодня - показываем время
+        if (messageDate.toDateString() === now.toDateString()) {
+            if (diffMins < 1) {
+                return 'только что';
+            } else if (diffMins < 60) {
+                return `${diffMins} мин. назад`;
+            } else {
+                return messageDate.toLocaleTimeString('ru-RU', { 
+                    hour: '2-digit', 
+                    minute: '2-digit' 
+                });
+            }
+        }
+        // Вчера
+        else if (diffDays === 1) {
+            return `вчера в ${messageDate.toLocaleTimeString('ru-RU', { 
+                hour: '2-digit', 
+                minute: '2-digit' 
+            })}`;
+        }
+        // На этой неделе
+        else if (diffDays < 7) {
+            const days = ['воскресенье', 'понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота'];
+            return `${days[messageDate.getDay()]} в ${messageDate.toLocaleTimeString('ru-RU', { 
+                hour: '2-digit', 
+                minute: '2-digit' 
+            })}`;
+        }
+        // Более недели назад
+        else {
+            return messageDate.toLocaleDateString('ru-RU', { 
+                day: 'numeric',
+                month: 'short',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
     }
 
     formatMessageContent(content) {
@@ -281,6 +333,22 @@ class ZnatokApp {
     }
 
     loadChatHistory() {
+        const stored = localStorage.getItem('znatok-chat-history');
+        if (stored) {
+            try {
+                this.chatHistory = JSON.parse(stored);
+                // Конвертируем строки времени обратно в Date объекты
+                this.chatHistory.forEach(msg => {
+                    if (typeof msg.timestamp === 'string') {
+                        msg.timestamp = new Date(msg.timestamp);
+                    }
+                });
+            } catch (e) {
+                console.error('Failed to load chat history', e);
+                this.chatHistory = [];
+            }
+        }
+
         if (this.chatHistory.length > 0) {
             const container = document.getElementById('chat-messages');
             container.innerHTML = '';
@@ -364,6 +432,7 @@ class ZnatokApp {
                 return;
             }
 
+            // ФИКС: Отображаем реальные загруженные документы
             const html = docs.map(doc => `
                 <div class="document-card">
                     <div class="doc-icon pdf">
@@ -371,10 +440,10 @@ class ZnatokApp {
                     </div>
                     <div class="doc-content">
                         <h4>${this.escapeHtml(doc.filename)}</h4>
-                        <p class="doc-meta">${new Date(doc.uploaded_at).toLocaleDateString('ru-RU')}</p>
+                        <p class="doc-meta">Загружен: ${new Date(doc.uploaded_at).toLocaleDateString('ru-RU')}</p>
                     </div>
                     <div class="doc-actions">
-                        <button class="action-btn" data-id="${doc.id}" title="Удалить">
+                        <button class="action-btn" data-filename="${this.escapeHtml(doc.filename)}" title="Удалить">
                             <i class="bi bi-trash"></i>
                         </button>
                     </div>
@@ -386,17 +455,25 @@ class ZnatokApp {
             // Обработчик удаления
             container.querySelectorAll('.action-btn').forEach(btn => {
                 btn.addEventListener('click', async () => {
-                    if (!confirm('Удалить документ?')) return;
-                    const id = btn.dataset.id;
+                    const filename = btn.dataset.filename;
+                    if (!filename || !confirm(`Удалить документ "${filename}"?`)) return;
+                    
                     try {
-                        const res = await fetch(`/api/documents/${id}`, { method: 'DELETE' });
+                        const encodedFilename = encodeURIComponent(filename);
+                        const res = await fetch(`/api/documents/${encodedFilename}`, { 
+                            method: 'DELETE' 
+                        });
+                        
                         if (res.ok) {
+                            this.showNotification('✅ Документ удален', 'success');
                             this.loadDocuments(); // перезагрузить список
                         } else {
-                            this.showNotification('Ошибка удаления', 'error');
+                            const errorText = await res.text();
+                            this.showNotification(`❌ Ошибка удаления: ${errorText}`, 'error');
                         }
                     } catch (e) {
-                        this.showNotification('Сетевая ошибка', 'error');
+                        this.showNotification('❌ Сетевая ошибка при удалении', 'error');
+                        console.error('Delete error:', e);
                     }
                 });
             });
