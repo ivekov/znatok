@@ -1,11 +1,11 @@
 import os
 import logging
+import asyncio
 from typing import List
 from fastapi import FastAPI, HTTPException, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
-from .ingestion import index_document, delete_document_from_qdrant, get_qdrant_client
 
 # Загрузка конфигурации
 load_dotenv()
@@ -26,6 +26,26 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Импорты модулей
+from .ingestion import index_document, delete_document_from_qdrant, get_qdrant_client
+from .rag import search_qdrant, get_llm_response
+from .models import ProviderType, ProviderConfig, Settings, load_settings, save_settings
+
+# Импорты интеграций (если они настроены)
+try:
+    from .bitrix24 import router as bitrix24_router
+    from .telegram import start_telegram_bot
+    BITRIX24_AVAILABLE = True
+    TELEGRAM_AVAILABLE = True
+except ImportError as e:
+    logger.warning(f"Некоторые интеграции недоступны: {e}")
+    BITRIX24_AVAILABLE = False
+    TELEGRAM_AVAILABLE = False
+
+# Подключаем роутер Битрикс24 если доступен
+if BITRIX24_AVAILABLE:
+    app.include_router(bitrix24_router)
+
 # Модели данных
 class AskRequest(BaseModel):
     question: str
@@ -35,7 +55,7 @@ class AskResponse(BaseModel):
     answer: str
     sources: List[dict]
 
-# Эндпоинты
+# Эндпоинты приложения
 @app.get("/api/health")
 async def health():
     return {"status": "ok", "service": "znatok-backend"}
@@ -62,13 +82,12 @@ async def ask(request: AskRequest):
     prompt = f"Контекст:\n{context}\n\nВопрос: {question}\n\nОтвет:"
 
     try:
-        token = await get_gigachat_token()
-        answer = await call_gigachat(prompt, token)
+        answer = await get_llm_response(prompt)
     except Exception as e:
-        logger.error(f"GigaChat error: {e}")
+        logger.error(f"LLM error: {e}")
         raise HTTPException(status_code=502, detail="AI service unavailable")
 
-    # ФИКС: Уникальные источники вместо дубликатов
+    # Уникальные источники
     unique_sources = set()
     sources = []
     for hit in hits:
@@ -76,6 +95,7 @@ async def ask(request: AskRequest):
         if source_name not in unique_sources:
             unique_sources.add(source_name)
             sources.append({"source": source_name})
+    
     return AskResponse(answer=answer, sources=sources)
 
 @app.post("/api/upload")
@@ -121,20 +141,21 @@ async def list_documents():
         if not client.collection_exists(collection):
             return []
 
+        # Получаем все точки (ограничено 1000 — достаточно для MVP)
         response = client.scroll(
             collection_name=collection,
             limit=1000,
             with_payload=True
         )
         
-        # Собираем уникальные имена файлов ИЗ PAYLOAD (оригинальные имена)
+        # Собираем уникальные имена файлов
         sources = {}
         for point in response[0]:
             source = point.payload.get("source")
             uploaded_at = point.payload.get("uploaded_at")
             if source and source not in sources:
                 sources[source] = {
-                    "filename": source,  # Оригинальное имя, а не хэшированное
+                    "filename": source,
                     "uploaded_at": uploaded_at
                 }
         
@@ -157,6 +178,29 @@ async def delete_document_endpoint(filename: str):
         logger.error(f"Ошибка удаления документа {filename}: {e}")
         raise HTTPException(status_code=500, detail="Failed to delete document")
 
+# Эндпоинты для настроек
+@app.get("/api/settings")
+async def get_settings():
+    """Получить текущие настройки"""
+    return load_settings()
+
+@app.post("/api/settings")
+async def update_settings(settings: Settings):
+    """Обновить настройки"""
+    save_settings(settings)
+    return {"status": "ok"}
+
+@app.get("/api/providers")
+async def get_providers():
+    """Получить список доступных провайдеров"""
+    return {
+        "providers": [
+            {"id": "gigachat", "name": "GigaChat", "description": "SberBank AI"},
+            {"id": "yandex_gpt", "name": "Yandex GPT", "description": "Yandex Large Language Model"},
+            {"id": "mistral", "name": "Mistral", "description": "Mistral AI Models"}
+        ]
+    }
+
 @app.delete("/api/reset-collection")
 async def reset_collection():
     """Временный эндпоинт для сброса коллекции (только для разработки)"""
@@ -171,5 +215,90 @@ async def reset_collection():
         logger.error(f"Ошибка сброса коллекции: {e}")
         raise HTTPException(status_code=500, detail="Failed to reset collection")
 
-# Импорты RAG-функций (должны быть в конце, чтобы избежать circular import)
-from .rag import search_qdrant, get_gigachat_token, call_gigachat
+@app.on_event("startup")
+async def startup_event():
+    """Запускаем интеграции при старте приложения"""
+    logger.info("Запуск интеграций...")
+    
+    # Запускаем Telegram бота в фоне если доступен и настроен
+    if TELEGRAM_AVAILABLE and os.getenv("TELEGRAM_BOT_TOKEN"):
+        try:
+            asyncio.create_task(start_telegram_bot())
+            logger.info("Telegram бот запущен")
+        except Exception as e:
+            logger.error(f"Ошибка запуска Telegram бота: {e}")
+    else:
+        logger.warning("Telegram бот не запущен - токен не задан или интеграция недоступна")
+    
+    # Битрикс24 бот запускается автоматически через роутер
+    if BITRIX24_AVAILABLE and os.getenv("BITRIX24_CLIENT_SECRET"):
+        logger.info("Bitrix24 бот готов к работе")
+    else:
+        logger.warning("Bitrix24 бот не настроен - секрет не задан или интеграция недоступна")
+
+@app.get("/")
+async def root():
+    """Корневой эндпоинт с информацией о сервисе"""
+    integrations = []
+    
+    if TELEGRAM_AVAILABLE and os.getenv("TELEGRAM_BOT_TOKEN"):
+        integrations.append("telegram")
+    if BITRIX24_AVAILABLE and os.getenv("BITRIX24_CLIENT_SECRET"):
+        integrations.append("bitrix24")
+    
+    return {
+        "service": "Znatok AI Assistant",
+        "version": "1.0.0",
+        "integrations": integrations,
+        "endpoints": {
+            "api": "/api/health",
+            "bitrix24": "/bitrix24/health" if BITRIX24_AVAILABLE else "not_available",
+            "docs": "/docs"
+        }
+    }
+
+# Эндпоинт для проверки статуса интеграций
+@app.get("/integrations")
+async def get_integrations_status():
+    """Возвращает статус всех интеграций"""
+    integrations_status = {}
+    
+    # Telegram статус
+    if TELEGRAM_AVAILABLE:
+        integrations_status["telegram"] = {
+            "available": True,
+            "configured": bool(os.getenv("TELEGRAM_BOT_TOKEN")),
+            "health": "active" if os.getenv("TELEGRAM_BOT_TOKEN") else "not_configured"
+        }
+    else:
+        integrations_status["telegram"] = {
+            "available": False,
+            "configured": False,
+            "health": "integration_not_available"
+        }
+    
+    # Bitrix24 статус
+    if BITRIX24_AVAILABLE:
+        integrations_status["bitrix24"] = {
+            "available": True,
+            "configured": bool(os.getenv("BITRIX24_CLIENT_SECRET")),
+            "health": "active" if os.getenv("BITRIX24_CLIENT_SECRET") else "not_configured"
+        }
+    else:
+        integrations_status["bitrix24"] = {
+            "available": False,
+            "configured": False,
+            "health": "integration_not_available"
+        }
+    
+    return integrations_status
+
+# Глобальный обработчик ошибок
+@app.exception_handler(Exception)
+async def global_exception_handler(request, exc):
+    """Глобальный обработчик исключений"""
+    logger.error(f"Глобальная ошибка: {exc}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Внутренняя ошибка сервера"}
+    )

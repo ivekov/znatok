@@ -10,8 +10,10 @@ class ZnatokApp {
     init() {
         this.setTheme(this.theme);
         this.bindEvents();
+        this.bindSettingsEvents();
         this.loadChatHistory();
         this.autoResizeTextarea();
+        
         // Загружаем документы при старте, если открыта вкладка
         if (this.currentSection === 'documents') {
             this.loadDocuments();
@@ -72,6 +74,10 @@ class ZnatokApp {
         document.getElementById('confirmUpload').addEventListener('click', () => {
             this.uploadFiles();
         });
+        
+        document.getElementById('fileInput').addEventListener('change', (e) => {
+            this.handleFileSelect(e.target.files);
+        });
 
         document.getElementById('uploadZone').addEventListener('dragover', (e) => {
             e.preventDefault();
@@ -116,7 +122,29 @@ class ZnatokApp {
         });
     }
 
-    switchSection(sectionName) {
+    bindSettingsEvents() {
+        // Переключение провайдеров
+        document.getElementById('provider-select').addEventListener('change', (e) => {
+            this.showProviderSettings(e.target.value);
+        });
+
+        // Обновление значения температуры
+        document.getElementById('temperature').addEventListener('input', (e) => {
+            document.getElementById('temperature-value').textContent = e.target.value;
+        });
+
+        // Сохранение настроек
+        document.getElementById('save-settings').addEventListener('click', () => {
+            this.saveSettings();
+        });
+
+        // Тест подключения
+        document.getElementById('test-connection').addEventListener('click', () => {
+            this.testConnection();
+        });
+    }
+
+    async switchSection(sectionName) {
         document.querySelectorAll('.nav-btn').forEach(btn => {
             btn.classList.remove('active');
         });
@@ -132,6 +160,11 @@ class ZnatokApp {
         // Загружаем документы при переходе на вкладку
         if (sectionName === 'documents') {
             this.loadDocuments();
+        }
+        
+        // Загружаем настройки при переходе в соответствующий раздел
+        if (sectionName === 'settings') {
+            await this.loadSettings();
         }
     }
 
@@ -158,10 +191,11 @@ class ZnatokApp {
             const data = await response.json();
             let answerHtml = data.answer;
             
-            // ФИКС: Показываем только реальные источники из ответа API
+            // ФИКС: Уникальные источники
             if (data.sources && data.sources.length > 0) {
-                const sourcesHtml = data.sources.map(src =>
-                    `<span class="source-chip">${this.escapeHtml(src.source)}</span>`
+                const uniqueSources = [...new Set(data.sources.map(src => src.source))];
+                const sourcesHtml = uniqueSources.map(src =>
+                    `<span class="source-chip">${this.escapeHtml(src)}</span>`
                 ).join('');
                 answerHtml += `<div class="message-sources mt-2">Источники: ${sourcesHtml}</div>`;
             }
@@ -170,7 +204,8 @@ class ZnatokApp {
             
         } catch (error) {
             this.removeTypingIndicator();
-            this.addMessage('system', `❌ ${error.message}`);
+            const errorMessage = this.handleApiError(error, 'Не удалось получить ответ');
+            this.addMessage('system', errorMessage);
             console.error('Chat error:', error);
         }
     }
@@ -206,61 +241,47 @@ class ZnatokApp {
         `;
     }
 
-    formatMessageTime(timestamp) {
-        const messageDate = new Date(timestamp);
-        const now = new Date();
-        
-        // Разница в миллисекундах
-        const diffMs = now - messageDate;
-        const diffMins = Math.floor(diffMs / 60000);
-        const diffHours = Math.floor(diffMs / 3600000);
-        const diffDays = Math.floor(diffMs / (3600000 * 24));
-        
-        // Сегодня - показываем время
-        if (messageDate.toDateString() === now.toDateString()) {
-            if (diffMins < 1) {
-                return 'только что';
-            } else if (diffMins < 60) {
-                return `${diffMins} мин. назад`;
-            } else {
-                return messageDate.toLocaleTimeString('ru-RU', { 
-                    hour: '2-digit', 
-                    minute: '2-digit' 
-                });
-            }
-        }
-        // Вчера
-        else if (diffDays === 1) {
-            return `вчера в ${messageDate.toLocaleTimeString('ru-RU', { 
-                hour: '2-digit', 
-                minute: '2-digit' 
-            })}`;
-        }
-        // На этой неделе
-        else if (diffDays < 7) {
-            const days = ['воскресенье', 'понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота'];
-            return `${days[messageDate.getDay()]} в ${messageDate.toLocaleTimeString('ru-RU', { 
-                hour: '2-digit', 
-                minute: '2-digit' 
-            })}`;
-        }
-        // Более недели назад
-        else {
-            return messageDate.toLocaleDateString('ru-RU', { 
-                day: 'numeric',
-                month: 'short',
-                hour: '2-digit',
-                minute: '2-digit'
-            });
-        }
-    }
-
     formatMessageContent(content) {
         return content
             .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
             .replace(/\*(.*?)\*/g, '<em>$1</em>')
             .replace(/`(.*?)`/g, '<code>$1</code>')
             .replace(/\n/g, '<br>');
+    }
+
+    formatMessageTime(timestamp) {
+        const messageDate = new Date(timestamp);
+        const now = new Date();
+        
+        // Сегодня
+        if (messageDate.toDateString() === now.toDateString()) {
+            return messageDate.toLocaleTimeString('ru-RU', { 
+                hour: '2-digit', 
+                minute: '2-digit' 
+            });
+        }
+        // Вчера
+        else if ((now - messageDate) < 48 * 60 * 60 * 1000) {
+            return `вчера ${messageDate.toLocaleTimeString('ru-RU', { 
+                hour: '2-digit', 
+                minute: '2-digit' 
+            })}`;
+        }
+        // На этой неделе (до 7 дней)
+        else if ((now - messageDate) < 7 * 24 * 60 * 60 * 1000) {
+            return messageDate.toLocaleDateString('ru-RU', { 
+                weekday: 'short',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
+        // Более недели назад
+        else {
+            return messageDate.toLocaleDateString('ru-RU', { 
+                day: 'numeric',
+                month: 'short'
+            });
+        }
     }
 
     showTypingIndicator() {
@@ -369,19 +390,171 @@ class ZnatokApp {
 
     hideModal(modalId) {
         document.getElementById(modalId).classList.remove('active');
+        if (modalId === 'uploadModal') {
+            this.clearFilePreviews();
+        }
+    }
+
+    handleFileSelect(files) {
+        if (files.length === 0) return;
+        
+        // Проверяем типы файлов
+        const validFiles = Array.from(files).filter(file => 
+            ['application/pdf', 
+             'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+             'application/msword',
+             'text/plain'].includes(file.type) ||
+            file.name.toLowerCase().endsWith('.pdf') ||
+            file.name.toLowerCase().endsWith('.docx') ||
+            file.name.toLowerCase().endsWith('.doc') ||
+            file.name.toLowerCase().endsWith('.txt')
+        );
+
+        if (validFiles.length === 0) {
+            this.showNotification('Поддерживаются только PDF, DOCX, DOC, TXT', 'error');
+            return;
+        }
+
+        if (validFiles.length !== files.length) {
+            this.showNotification('Некоторые файлы не поддерживаются и были пропущены', 'warning');
+        }
+
+        this.renderFilePreviews(validFiles);
     }
 
     handleFileDrop(files) {
         if (files.length === 0) return;
+        
+        // Создаем DataTransfer для обновления input
         const dataTransfer = new DataTransfer();
-        for (let file of files) {
-            if (!['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain'].includes(file.type)) {
-                this.showNotification('Поддерживаются только PDF, DOCX, TXT', 'error');
-                return;
-            }
-            dataTransfer.items.add(file);
+        const validFiles = Array.from(files).filter(file => 
+            ['application/pdf', 
+             'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+             'application/msword',
+             'text/plain'].includes(file.type) ||
+            file.name.toLowerCase().endsWith('.pdf') ||
+            file.name.toLowerCase().endsWith('.docx') ||
+            file.name.toLowerCase().endsWith('.doc') ||
+            file.name.toLowerCase().endsWith('.txt')
+        );
+
+        if (validFiles.length === 0) {
+            this.showNotification('Поддерживаются только PDF, DOCX, DOC, TXT', 'error');
+            return;
         }
+
+        validFiles.forEach(file => dataTransfer.items.add(file));
         document.getElementById('fileInput').files = dataTransfer.files;
+        
+        this.renderFilePreviews(validFiles);
+    }
+
+    renderFilePreviews(files) {
+        const previewContainer = document.getElementById('uploadPreview');
+        const filePreviews = document.getElementById('filePreviews');
+        const uploadZone = document.getElementById('uploadZone');
+        
+        // Очищаем предыдущие превью
+        filePreviews.innerHTML = '';
+        
+        // Добавляем новые превью
+        files.forEach((file, index) => {
+            const fileExtension = this.getFileExtension(file.name);
+            const fileSize = this.formatFileSize(file.size);
+            const fileType = this.getFileType(fileExtension);
+            
+            const preview = document.createElement('div');
+            preview.className = 'file-preview';
+            preview.innerHTML = `
+                <div class="file-icon ${fileType}">
+                    <i class="bi ${this.getFileIcon(fileExtension)}"></i>
+                </div>
+                <div class="file-info">
+                    <div class="file-name" title="${this.escapeHtml(file.name)}">${this.escapeHtml(file.name)}</div>
+                    <div class="file-size">${fileSize}</div>
+                </div>
+                <button class="file-remove" data-index="${index}">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            `;
+            filePreviews.appendChild(preview);
+        });
+        
+        // Показываем контейнер превью и обновляем стиль зоны загрузки
+        previewContainer.style.display = 'block';
+        uploadZone.classList.add('has-files');
+        
+        // Добавляем обработчики удаления файлов
+        filePreviews.querySelectorAll('.file-remove').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.removeFilePreview(parseInt(btn.dataset.index));
+            });
+        });
+    }
+
+    removeFilePreview(index) {
+        const fileInput = document.getElementById('fileInput');
+        const files = Array.from(fileInput.files);
+        
+        // Удаляем файл из списка
+        files.splice(index, 1);
+        
+        // Обновляем input files
+        const dataTransfer = new DataTransfer();
+        files.forEach(file => dataTransfer.items.add(file));
+        fileInput.files = dataTransfer.files;
+        
+        // Перерисовываем превью
+        if (files.length > 0) {
+            this.renderFilePreviews(files);
+        } else {
+            this.clearFilePreviews();
+        }
+    }
+
+    clearFilePreviews() {
+        const previewContainer = document.getElementById('uploadPreview');
+        const filePreviews = document.getElementById('filePreviews');
+        const uploadZone = document.getElementById('uploadZone');
+        const fileInput = document.getElementById('fileInput');
+        
+        filePreviews.innerHTML = '';
+        previewContainer.style.display = 'none';
+        uploadZone.classList.remove('has-files');
+        fileInput.value = '';
+    }
+
+    getFileExtension(filename) {
+        return filename.toLowerCase().split('.').pop();
+    }
+
+    getFileType(extension) {
+        const typeMap = {
+            'pdf': 'pdf',
+            'docx': 'docx',
+            'doc': 'doc',
+            'txt': 'txt'
+        };
+        return typeMap[extension] || 'unknown';
+    }
+
+    getFileIcon(extension) {
+        const iconMap = {
+            'pdf': 'bi-file-earmark-pdf',
+            'docx': 'bi-file-earmark-word',
+            'doc': 'bi-file-earmark-word',
+            'txt': 'bi-file-earmark-text'
+        };
+        return iconMap[extension] || 'bi-file-earmark';
+    }
+
+    formatFileSize(bytes) {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
     }
 
     async uploadFiles() {
@@ -396,24 +569,26 @@ class ZnatokApp {
         for (let file of files) {
             formData.append('files', file);
         }
-        formData.append('department', 'all'); // без фильтрации
+        formData.append('department', 'all');
 
         try {
             this.showNotification('Загрузка...', 'info');
             const response = await fetch('/api/upload', { method: 'POST', body: formData });
+            
             if (response.ok) {
                 this.showNotification('✅ Документы загружены!', 'success');
                 this.hideModal('uploadModal');
-                fileInput.value = '';
+                this.clearFilePreviews(); // Очищаем превью после успешной загрузки
                 if (this.currentSection === 'documents') {
-                    this.loadDocuments(); // обновить список
+                    this.loadDocuments();
                 }
             } else {
                 const error = await response.text();
                 this.showNotification(`❌ ${error}`, 'error');
             }
         } catch (error) {
-            this.showNotification(`❌ Ошибка сети`, 'error');
+            const errorMessage = this.handleApiError(error, 'Ошибка загрузки файлов');
+            this.showNotification(errorMessage, 'error');
             console.error('Upload error:', error);
         }
     }
@@ -432,7 +607,7 @@ class ZnatokApp {
                 return;
             }
 
-            // ФИКС: Отображаем реальные загруженные документы
+            // ФИКС: Используем filename вместо id
             const html = docs.map(doc => `
                 <div class="document-card">
                     <div class="doc-icon pdf">
@@ -452,13 +627,14 @@ class ZnatokApp {
 
             container.innerHTML = html;
 
-            // Обработчик удаления
+            // ФИКС: Обработчик удаления с правильным filename
             container.querySelectorAll('.action-btn').forEach(btn => {
                 btn.addEventListener('click', async () => {
                     const filename = btn.dataset.filename;
                     if (!filename || !confirm(`Удалить документ "${filename}"?`)) return;
                     
                     try {
+                        // ФИКС: Правильное кодирование имени файла в URL
                         const encodedFilename = encodeURIComponent(filename);
                         const res = await fetch(`/api/documents/${encodedFilename}`, { 
                             method: 'DELETE' 
@@ -483,11 +659,151 @@ class ZnatokApp {
         }
     }
 
+    async loadSettings() {
+        try {
+            const response = await fetch('/api/settings');
+            if (!response.ok) throw new Error('Не удалось загрузить настройки');
+            const settings = await response.json();
+            this.renderSettings(settings);
+        } catch (error) {
+            this.showNotification('Ошибка загрузки настроек', 'error');
+        }
+    }
+
+    renderSettings(settings) {
+        // Установка выбранного провайдера
+        const providerSelect = document.getElementById('provider-select');
+        providerSelect.value = settings.current_provider;
+
+        // Показ соответствующих настроек
+        this.showProviderSettings(settings.current_provider);
+
+        // Заполнение настроек провайдеров
+        if (settings.providers) {
+            Object.entries(settings.providers).forEach(([provider, config]) => {
+                if (provider === 'gigachat') {
+                    document.getElementById('gigachat-api-key').value = config.api_key || '';
+                    document.getElementById('gigachat-model').value = config.model || 'GigaChat';
+                } else if (provider === 'yandex_gpt') {
+                    document.getElementById('yandex-api-key').value = config.api_key || '';
+                    document.getElementById('yandex-model').value = config.model || 'yandexgpt/latest';
+                } else if (provider === 'mistral') {
+                    document.getElementById('mistral-api-key').value = config.api_key || '';
+                    document.getElementById('mistral-model').value = config.model || 'mistral-medium';
+                }
+
+                // Общие настройки
+                document.getElementById('temperature').value = config.temperature || 0.1;
+                document.getElementById('temperature-value').textContent = config.temperature || 0.1;
+                document.getElementById('max-tokens').value = config.max_tokens || 512;
+            });
+        }
+    }
+
+    showProviderSettings(provider) {
+        // Скрываем все настройки провайдеров
+        document.querySelectorAll('.provider-settings').forEach(el => {
+            el.classList.remove('active');
+        });
+        
+        // Показываем выбранный провайдер
+        const providerEl = document.getElementById(`${provider}-settings`);
+        if (providerEl) {
+            providerEl.classList.add('active');
+        }
+    }
+
+    async saveSettings() {
+        const provider = document.getElementById('provider-select').value;
+        
+        const settings = {
+            current_provider: provider,
+            providers: {
+                gigachat: {
+                    provider: 'gigachat',
+                    api_key: document.getElementById('gigachat-api-key').value,
+                    model: document.getElementById('gigachat-model').value,
+                    temperature: parseFloat(document.getElementById('temperature').value),
+                    max_tokens: parseInt(document.getElementById('max-tokens').value)
+                },
+                yandex_gpt: {
+                    provider: 'yandex_gpt',
+                    api_key: document.getElementById('yandex-api-key').value,
+                    model: document.getElementById('yandex-model').value,
+                    temperature: parseFloat(document.getElementById('temperature').value),
+                    max_tokens: parseInt(document.getElementById('max-tokens').value)
+                },
+                mistral: {
+                    provider: 'mistral',
+                    api_key: document.getElementById('mistral-api-key').value,
+                    model: document.getElementById('mistral-model').value,
+                    temperature: parseFloat(document.getElementById('temperature').value),
+                    max_tokens: parseInt(document.getElementById('max-tokens').value)
+                }
+            }
+        };
+
+        try {
+            const response = await fetch('/api/settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(settings)
+            });
+
+            if (response.ok) {
+                this.showNotification('Настройки сохранены', 'success');
+            } else {
+                throw new Error('Ошибка сохранения');
+            }
+        } catch (error) {
+            this.showNotification('Ошибка сохранения настроек', 'error');
+        }
+    }
+
+    async testConnection() {
+        const provider = document.getElementById('provider-select').value;
+        
+        try {
+            this.showNotification('Проверка подключения...', 'info');
+            
+            // Сохраняем настройки временно
+            await this.saveSettings();
+            
+            // Тестируем с простым запросом
+            const response = await fetch('/api/ask', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    question: 'Привет! Ответь коротко: соединение установлено?',
+                    user_department: 'all' 
+                })
+            });
+
+            if (response.ok) {
+                this.showNotification('✅ Подключение успешно!', 'success');
+            } else {
+                throw new Error('Ошибка тестирования');
+            }
+        } catch (error) {
+            this.showNotification('❌ Ошибка подключения', 'error');
+        }
+    }
+
+    handleApiError(error, defaultMessage = 'Произошла ошибка') {
+        if (error.message.includes('Failed to fetch')) {
+            return '❌ Ошибка соединения с сервером';
+        }
+        if (error.message.includes('502')) {
+            return '❌ Сервис временно недоступен';
+        }
+        return `❌ ${error.message || defaultMessage}`;
+    }
+
     escapeHtml(unsafe) {
         return unsafe
             .replace(/&/g, "&amp;")
-            .replace(/</g, "<")
-            .replace(/>/g, ">")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
             .replace(/"/g, "&quot;")
             .replace(/'/g, "&#039;");
     }
@@ -519,178 +835,6 @@ class ZnatokApp {
         return icons[type] || 'info-circle';
     }
 }
-
-// Динамические стили (оставляем как есть)
-const dynamicStyles = `
-.message {
-    margin-bottom: 1.5rem;
-    animation: messageSlide 0.3s ease-out;
-}
-
-@keyframes messageSlide {
-    from {
-        opacity: 0;
-        transform: translateY(10px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-
-.user-message {
-    display: flex;
-    justify-content: flex-end;
-}
-
-.assistant-message {
-    display: flex;
-    justify-content: flex-start;
-}
-
-.message-bubble {
-    max-width: 70%;
-    padding: 1rem 1.25rem;
-    border-radius: 18px;
-    position: relative;
-}
-
-.message-bubble.user {
-    background: var(--accent-gradient);
-    color: white;
-    border-bottom-right-radius: 4px;
-}
-
-.message-bubble.assistant {
-    background: var(--bg-glass);
-    border: 1px solid var(--border-light);
-    color: var(--text-primary);
-    border-bottom-left-radius: 4px;
-}
-
-.message-content {
-    line-height: 1.5;
-}
-
-.message-content strong {
-    font-weight: 600;
-}
-
-.message-content em {
-    font-style: italic;
-}
-
-.message-content code {
-    background: rgba(255, 255, 255, 0.1);
-    padding: 0.2rem 0.4rem;
-    border-radius: 4px;
-    font-family: 'Monaco', 'Consolas', monospace;
-    font-size: 0.875em;
-}
-
-.message-time {
-    font-size: 0.75rem;
-    opacity: 0.7;
-    margin-top: 0.5rem;
-}
-
-.typing-indicator {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    color: var(--text-secondary);
-}
-
-.typing-dots {
-    display: flex;
-    gap: 0.25rem;
-}
-
-.dot {
-    width: 6px;
-    height: 6px;
-    background: var(--text-secondary);
-    border-radius: 50%;
-    animation: typing 1.4s infinite ease-in-out;
-}
-
-.dot:nth-child(1) { animation-delay: -0.32s; }
-.dot:nth-child(2) { animation-delay: -0.16s; }
-
-@keyframes typing {
-    0%, 80%, 100% { 
-        transform: scale(0.8);
-        opacity: 0.5;
-    }
-    40% { 
-        transform: scale(1);
-        opacity: 1;
-    }
-}
-
-.notification {
-    position: fixed;
-    top: 100px;
-    right: 2rem;
-    background: var(--bg-glass);
-    backdrop-filter: blur(20px);
-    border: 1px solid var(--border-light);
-    border-radius: 12px;
-    padding: 1rem 1.5rem;
-    transform: translateX(400px);
-    transition: transform 0.3s ease;
-    z-index: 1000;
-    max-width: 300px;
-}
-
-.notification.show {
-    transform: translateX(0);
-}
-
-.notification-content {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    color: var(--text-primary);
-}
-
-.notification.success {
-    border-color: #10b981;
-    background: rgba(16, 185, 129, 0.1);
-}
-
-.notification.error {
-    border-color: #ef4444;
-    background: rgba(239, 68, 68, 0.1);
-}
-
-.notification.warning {
-    border-color: #f59e0b;
-    background: rgba(245, 158, 11, 0.1);
-}
-.message-sources {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-    margin-top: 1rem;
-}
-.source-chip {
-    background: rgba(255,255,255,0.1);
-    border: 1px solid rgba(255,255,255,0.2);
-    border-radius: 12px;
-    padding: 0.25rem 0.75rem;
-    font-size: 0.85em;
-}
-[data-theme="light"] .source-chip {
-    background: #e0e0e0;
-    border-color: #ccc;
-    color: #333;
-}
-`;
-
-const styleSheet = document.createElement('style');
-styleSheet.textContent = dynamicStyles;
-document.head.appendChild(styleSheet);
 
 // Инициализация
 document.addEventListener('DOMContentLoaded', () => {
