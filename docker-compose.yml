@@ -13,11 +13,15 @@ services:
     build: ./backend
     container_name: znatok-backend
     env_file: .env
+    ports:
+      - "8000:8000"
     volumes:
       - ./backend/uploads:/app/uploads  # ← добавьте эту строку
       - huggingface_cache:/root/.cache/huggingface  # ← добавили эту строку
     depends_on:
       - qdrant
+    networks:
+      - znatok-network
 
   # Фронтенд + Nginx (единый сервис)
   web:
@@ -29,7 +33,13 @@ services:
       - "80:80"
     depends_on:
       - backend
+    networks:
+      - znatok-network
 
 volumes:
   qdrant_storage:
   huggingface_cache:  # ← добавили этот volume
+
+networks:
+  znatok-network:
+    driver: bridge
