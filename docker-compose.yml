@@ -10,7 +10,7 @@ services:
 
   # Бэкенд — FastAPI
   backend:
-    build: ./backend
+    image: ivekov/znatok:latest
     container_name: znatok-backend
     env_file: .env
     ports:
