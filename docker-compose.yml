@@ -1,0 +1,35 @@
+services:
+  # Qdrant — векторная БД
+  qdrant:
+    image: qdrant/qdrant:v1.15
+    container_name: znatok-qdrant
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrant_storage:/qdrant/storage
+
+  # Бэкенд — FastAPI
+  backend:
+    build: ./backend
+    container_name: znatok-backend
+    env_file: .env
+    volumes:
+      - ./backend/uploads:/app/uploads  # ← добавьте эту строку
+      - huggingface_cache:/root/.cache/huggingface  # ← добавили эту строку
+    depends_on:
+      - qdrant
+
+  # Фронтенд + Nginx (единый сервис)
+  web:
+    build:
+      context: .
+      dockerfile: nginx/Dockerfile
+    container_name: znatok-web
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+
+volumes:
+  qdrant_storage:
+  huggingface_cache:  # ← добавили этот volume
