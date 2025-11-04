@@ -166,6 +166,10 @@ class ZnatokApp {
         if (sectionName === 'settings') {
             await this.loadSettings();
         }
+
+        if (sectionName === 'integrations' && !this.integrationsManager) {
+            this.integrationsManager = new IntegrationsManager(this);
+        }
     }
 
     async sendMessage() {

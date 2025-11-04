@@ -1,0 +1,135 @@
+/* frontend/css/integrations.css */
+
+.integrations-container {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    max-width: 700px;
+}
+
+.integration-card {
+    background: var(--bg-glass);
+    border: 1px solid var(--border-light);
+    border-radius: 16px;
+    padding: 1.5rem;
+    transition: all 0.2s ease;
+}
+
+.integration-card:hover {
+    border-color: var(--border-medium);
+    box-shadow: var(--shadow-sm);
+}
+
+.integration-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+}
+
+.integration-header i {
+    font-size: 1.5rem;
+    color: var(--text-primary);
+}
+
+.integration-header h4 {
+    font-size: 1.25rem;
+    color: var(--text-primary);
+    margin: 0;
+}
+
+.integration-status {
+    margin-left: auto;
+    padding: 0.25rem 0.75rem;
+    border-radius: 12px;
+    font-size: 0.85rem;
+    font-weight: 500;
+}
+
+.integration-status.status-active {
+    background: rgba(16, 185, 129, 0.15);
+    color: var(--success);
+    border: 1px solid var(--success);
+}
+
+.integration-status.status-inactive {
+    background: rgba(239, 68, 68, 0.1);
+    color: var(--error);
+    border: 1px solid var(--error);
+}
+
+.integration-body p {
+    color: var(--text-secondary);
+    margin-bottom: 1.25rem;
+    line-height: 1.6;
+}
+
+.integration-actions {
+    display: flex;
+    gap: 0.75rem;
+    margin: 1.25rem 0;
+}
+
+.integration-actions .btn-primary,
+.integration-actions .btn-secondary {
+    flex: 1;
+}
+
+.integration-instructions {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-light);
+    border-radius: 12px;
+    padding: 1rem;
+    margin-top: 1rem;
+}
+
+.integration-instructions summary {
+    font-weight: 600;
+    color: var(--text-primary);
+    cursor: pointer;
+    outline: none;
+    list-style: none;
+}
+
+.integration-instructions summary::marker,
+.integration-instructions summary::-webkit-details-marker {
+    display: none;
+}
+
+.integration-instructions summary::before {
+    content: "▶ ";
+    font-size: 0.8em;
+    margin-right: 0.5rem;
+    transition: transform 0.2s;
+}
+
+.integration-instructions[open] summary::before {
+    content: "▼ ";
+}
+
+.integration-instructions ol {
+    padding-left: 1.25rem;
+    margin-top: 0.75rem;
+    color: var(--text-secondary);
+    line-height: 1.6;
+}
+
+.integration-instructions a {
+    color: var(--accent-primary);
+    text-decoration: none;
+}
+
+.integration-instructions a:hover {
+    text-decoration: underline;
+}
+
+/* Адаптивность */
+@media (max-width: 768px) {
+    .integration-actions {
+        flex-direction: column;
+    }
+
+    .integration-card {
+        padding: 1.25rem;
+    }
+}

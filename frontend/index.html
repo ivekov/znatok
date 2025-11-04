@@ -6,6 +6,7 @@
     <title>Znatok AI Assistant</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
     <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="css/integrations.css">
 </head>
 <body>
     <div class="app-container">
@@ -29,7 +30,15 @@
                 </button>
                 <button class="nav-btn" data-section="settings">
                     <i class="bi bi-gear"></i>
-                    <span>Настройки</span>
+                    <span>Настройки LLM</span>
+                </button>
+                <button class="nav-btn" data-section="integrations">
+                    <i class="bi bi-robot"></i>
+                    <span>Интеграции</span>
+                </button>
+                <button class="nav-btn" data-section="sources">
+                    <i class="bi bi-database"></i>
+                    <span>Источники</span>
                 </button>
             </div>
             
@@ -190,6 +199,82 @@
                     </div>
                 </div>
             </section>
+
+            <!-- Integrations Section -->
+            <section id="integrations-section" class="content-section">
+                <div class="section-header">
+                    <h2>Подключение чат-ботов</h2>
+                    <p>Настройте интеграции с Telegram и Битрикс24</p>
+                </div>
+
+                <div class="integrations-container">
+                    <!-- Telegram Card -->
+                    <div class="integration-card" id="telegram-card">
+                        <div class="integration-header">
+                            <i class="bi bi-telegram"></i>
+                            <h4>Telegram</h4>
+                            <span class="integration-status" id="telegram-status">Не настроен</span>
+                        </div>
+                        <div class="integration-body">
+                            <p>Подключите Telegram-бота к вашему корпоративному помощнику.</p>
+                            <div class="setting-group">
+                                <label>Токен бота:</label>
+                                <input type="password" id="telegram-bot-token" class="setting-input" placeholder="Ваш Telegram Bot Token...">
+                                <small>Получите у <a href="https://t.me/BotFather" target="_blank">@BotFather</a></small>
+                            </div>
+                            <div class="integration-actions">
+                                <button class="btn-secondary" id="test-telegram">Проверить</button>
+                                <button class="btn-primary" id="save-telegram">Сохранить</button>
+                            </div>
+                            <details class="integration-instructions">
+                                <summary>Инструкция по подключению</summary>
+                                <ol>
+                                    <li>Напишите <a href="https://t.me/BotFather" target="_blank">@BotFather</a> и создайте нового бота.</li>
+                                    <li>Скопируйте полученный токен.</li>
+                                    <li>Вставьте его выше и нажмите «Сохранить».</li>
+                                    <li>Бот автоматически запустится при следующем старте сервиса.</li>
+                                </ol>
+                            </details>
+                        </div>
+                    </div>
+
+                    <!-- Bitrix24 Card -->
+                    <div class="integration-card" id="bitrix24-card">
+                        <div class="integration-header">
+                            <i class="bi bi-building"></i>
+                            <h4>Битрикс24</h4>
+                            <span class="integration-status" id="bitrix24-status">Не настроен</span>
+                        </div>
+                        <div class="integration-body">
+                            <p>Подключите бота к мессенджеру Битрикс24 через вебхук.</p>
+                            <div class="setting-group">
+                                <label>Client Secret:</label>
+                                <input type="password" id="bitrix24-secret" class="setting-input" placeholder="Ваш Bitrix24 Client Secret...">
+                                <small>Получите в <a href="https://partners.1c-bitrix.ru/personal/iblock/" target="_blank">CRM → Приложения</a></small>
+                            </div>
+                            <div class="setting-group">
+                                <label>Вебхук URL:</label>
+                                <input type="text" id="bitrix24-webhook-url" class="setting-input" readonly value="http://ваш-домен/bitrix24/webhook">
+                                <small>Скопируйте этот URL в настройки вебхука в Битрикс24</small>
+                            </div>
+                            <div class="integration-actions">
+                                <button class="btn-secondary" id="test-bitrix24">Проверить</button>
+                                <button class="btn-primary" id="save-bitrix24">Сохранить</button>
+                            </div>
+                            <details class="integration-instructions">
+                                <summary>Инструкция по подключению</summary>
+                                <ol>
+                                    <li>Создайте приложение в Битрикс24 → «Разработчику» → «События».</li>
+                                    <li>Выберите событие <code>ONIMBOTMESSAGEADD</code> и <code>ONIMCOMMANDADD</code>.</li>
+                                    <li>Укажите вебхук URL из поля выше.</li>
+                                    <li>Скопируйте <code>CLIENT_SECRET</code> и вставьте сюда.</li>
+                                </ol>
+                            </details>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
         </main>
     </div>
 
@@ -231,5 +316,6 @@
     </div>
 
     <script src="js/app.js"></script>
+    <script src="js/integrations.js"></script>
 </body>
 </html>

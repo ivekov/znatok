@@ -20,26 +20,33 @@ class ProviderConfig(BaseModel):
     model: Optional[str] = None
     temperature: float = 0.1
     max_tokens: int = 512
-    
+
 class Settings(BaseModel):
     current_provider: ProviderType = ProviderType.GIGACHAT
     providers: Dict[ProviderType, ProviderConfig] = {}
+    integrations: Dict[str, Dict[str, Optional[str]]] = {
+        "telegram": {"bot_token": None},
+        "bitrix24": {"client_secret": None}
+    }
 
-# Путь к файлу настроек
 SETTINGS_FILE = "/app/data/settings.json"
 
 def load_settings() -> Settings:
-    """Загружает настройки из файла"""
     try:
         if os.path.exists(SETTINGS_FILE):
             with open(SETTINGS_FILE, 'r', encoding='utf-8') as f:
                 data = json.load(f)
-                # Конвертируем строки в ProviderType
                 if 'current_provider' in data:
                     data['current_provider'] = ProviderType(data['current_provider'])
                 if 'providers' in data:
                     data['providers'] = {
                         ProviderType(k): ProviderConfig(**v) for k, v in data['providers'].items()
+                    }
+                # Убедимся, что integrations всегда существует
+                if 'integrations' not in data:
+                    data['integrations'] = {
+                        "telegram": {"bot_token": None},
+                        "bitrix24": {"client_secret": None}
                     }
                 return Settings(**data)
         return Settings()
@@ -48,11 +55,8 @@ def load_settings() -> Settings:
         return Settings()
 
 def save_settings(settings: Settings):
-    """Сохраняет настройки в файл"""
     try:
-        # Создаем директорию если не существует
         os.makedirs(os.path.dirname(SETTINGS_FILE), exist_ok=True)
-        
         with open(SETTINGS_FILE, 'w', encoding='utf-8') as f:
             json.dump(settings.dict(), f, indent=2, ensure_ascii=False)
     except Exception as e:

@@ -1,9 +1,11 @@
+# backend/app/main.py
 import os
 import logging
 import asyncio
-from typing import List
-from fastapi import FastAPI, HTTPException, File, UploadFile, Form
+from typing import List, Dict, Any
+from fastapi import FastAPI, HTTPException, File, UploadFile, Form, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
@@ -31,20 +33,25 @@ from .ingestion import index_document, delete_document_from_qdrant, get_qdrant_c
 from .rag import search_qdrant, get_llm_response
 from .models import ProviderType, ProviderConfig, Settings, load_settings, save_settings
 
-# Импорты интеграций (если они настроены)
+# Глобальные переменные для интеграций
+TELEGRAM_BOT_INSTANCE = None
+BITRIX24_ROUTER_AVAILABLE = False
+
+# Попытка импорта интеграций
 try:
-    from .bitrix24 import router as bitrix24_router
-    from .telegram import start_telegram_bot
-    BITRIX24_AVAILABLE = True
+    from .telegram import start_telegram_bot, stop_telegram_bot
     TELEGRAM_AVAILABLE = True
 except ImportError as e:
-    logger.warning(f"Некоторые интеграции недоступны: {e}")
-    BITRIX24_AVAILABLE = False
+    logger.warning(f"Telegram интеграция недоступна: {e}")
     TELEGRAM_AVAILABLE = False
 
-# Подключаем роутер Битрикс24 если доступен
-if BITRIX24_AVAILABLE:
+try:
+    from .bitrix24 import router as bitrix24_router
+    BITRIX24_ROUTER_AVAILABLE = True
     app.include_router(bitrix24_router)
+except ImportError as e:
+    logger.warning(f"Bitrix24 интеграция недоступна: {e}")
+    BITRIX24_ROUTER_AVAILABLE = False
 
 # Модели данных
 class AskRequest(BaseModel):
@@ -54,6 +61,10 @@ class AskRequest(BaseModel):
 class AskResponse(BaseModel):
     answer: str
     sources: List[dict]
+
+class IntegrationUpdate(BaseModel):
+    telegram: Dict[str, Any] = {}
+    bitrix24: Dict[str, Any] = {}
 
 # Эндпоинты приложения
 @app.get("/api/health")
@@ -112,16 +123,13 @@ async def upload_files(
         ] and not file.filename.lower().endswith('.txt'):
             raise HTTPException(status_code=400, detail=f"Неподдерживаемый тип: {file.filename}")
 
-        # Удаляем старую версию документа из Qdrant
         delete_document_from_qdrant(file.filename)
 
-        # Сохраняем файл на диск
         safe_filename = f"{hash(file.filename)}_{file.filename}"
         filepath = os.path.join(UPLOAD_DIR, safe_filename)
         with open(filepath, "wb") as f:
             f.write(await file.read())
 
-        # Индексируем в Qdrant
         try:
             index_document(filepath, file.filename, department)
             uploaded_files.append(file.filename)
@@ -133,7 +141,6 @@ async def upload_files(
 
 @app.get("/api/documents")
 async def list_documents():
-    """Возвращает список документов напрямую из Qdrant."""
     try:
         client = get_qdrant_client()
         collection = os.getenv("QDRANT_COLLECTION", "znatok_chunks")
@@ -141,14 +148,12 @@ async def list_documents():
         if not client.collection_exists(collection):
             return []
 
-        # Получаем все точки (ограничено 1000 — достаточно для MVP)
         response = client.scroll(
             collection_name=collection,
             limit=1000,
             with_payload=True
         )
         
-        # Собираем уникальные имена файлов
         sources = {}
         for point in response[0]:
             source = point.payload.get("source")
@@ -167,7 +172,6 @@ async def list_documents():
 
 @app.delete("/api/documents/{filename}")
 async def delete_document_endpoint(filename: str):
-    """Удаляет документ по имени файла."""
     if not filename or filename == "undefined":
         raise HTTPException(status_code=400, detail="Invalid filename")
     
@@ -178,21 +182,18 @@ async def delete_document_endpoint(filename: str):
         logger.error(f"Ошибка удаления документа {filename}: {e}")
         raise HTTPException(status_code=500, detail="Failed to delete document")
 
-# Эндпоинты для настроек
+# Эндпоинты для настроек AI
 @app.get("/api/settings")
 async def get_settings():
-    """Получить текущие настройки"""
     return load_settings()
 
 @app.post("/api/settings")
 async def update_settings(settings: Settings):
-    """Обновить настройки"""
     save_settings(settings)
     return {"status": "ok"}
 
 @app.get("/api/providers")
 async def get_providers():
-    """Получить список доступных провайдеров"""
     return {
         "providers": [
             {"id": "gigachat", "name": "GigaChat", "description": "SberBank AI"},
@@ -201,9 +202,65 @@ async def get_providers():
         ]
     }
 
+# === НОВЫЕ ЭНДПОИНТЫ ДЛЯ ИНТЕГРАЦИЙ ===
+
+@app.get("/api/integrations")
+async def get_integrations():
+    """Возвращает состояние интеграций и их настройки (без секретов в UI)"""
+    settings = load_settings()
+    integrations = settings.integrations or {}
+    
+    def is_configured(name: str) -> bool:
+        secret = integrations.get(name, {}).get("bot_token" if name == "telegram" else "client_secret")
+        return bool(secret)
+    
+    return {
+        "telegram": {
+            "available": TELEGRAM_AVAILABLE,
+            "configured": is_configured("telegram"),
+            "health": "active" if is_configured("telegram") else "not_configured"
+        },
+        "bitrix24": {
+            "available": BITRIX24_ROUTER_AVAILABLE,
+            "configured": is_configured("bitrix24"),
+            "health": "active" if is_configured("bitrix24") else "not_configured",
+            "webhook_url": f"{os.getenv('BASE_URL', 'http://localhost:8000')}/bitrix24/webhook"
+        }
+    }
+
+@app.post("/api/integrations")
+async def update_integrations(update: IntegrationUpdate):
+    """Обновляет настройки интеграций"""
+    settings = load_settings()
+    if not settings.integrations:
+        settings.integrations = {"telegram": {}, "bitrix24": {}}
+    
+    # Обновляем только указанные поля
+    if update.telegram:
+        settings.integrations["telegram"]["bot_token"] = update.telegram.get("bot_token")
+    if update.bitrix24:
+        settings.integrations["bitrix24"]["client_secret"] = update.bitrix24.get("client_secret")
+    
+    save_settings(settings)
+    
+    # Перезапуск Telegram бота, если изменился токен
+    if TELEGRAM_AVAILABLE and update.telegram and "bot_token" in update.telegram:
+        global TELEGRAM_BOT_INSTANCE
+        if TELEGRAM_BOT_INSTANCE:
+            await stop_telegram_bot()
+            TELEGRAM_BOT_INSTANCE = None
+        if update.telegram["bot_token"]:
+            from .telegram import ZnatokTelegramBot
+            bot = ZnatokTelegramBot(backend_url=os.getenv("BASE_URL", "http://localhost:8000"))
+            TELEGRAM_BOT_INSTANCE = bot
+            asyncio.create_task(bot.run())
+            logger.info("Telegram бот перезапущен с новым токеном")
+    
+    return {"status": "ok"}
+
+# Эндпоинт сброса коллекции (для разработки)
 @app.delete("/api/reset-collection")
 async def reset_collection():
-    """Временный эндпоинт для сброса коллекции (только для разработки)"""
     try:
         client = get_qdrant_client()
         collection = os.getenv("QDRANT_COLLECTION", "znatok_chunks")
@@ -215,35 +272,47 @@ async def reset_collection():
         logger.error(f"Ошибка сброса коллекции: {e}")
         raise HTTPException(status_code=500, detail="Failed to reset collection")
 
+# События жизненного цикла
 @app.on_event("startup")
 async def startup_event():
-    """Запускаем интеграции при старте приложения"""
-    logger.info("Запуск интеграций...")
+    logger.info("Запуск сервиса Znatok...")
+    settings = load_settings()
     
-    # Запускаем Telegram бота в фоне если доступен и настроен
-    if TELEGRAM_AVAILABLE and os.getenv("TELEGRAM_BOT_TOKEN"):
-        try:
-            asyncio.create_task(start_telegram_bot())
-            logger.info("Telegram бот запущен")
-        except Exception as e:
-            logger.error(f"Ошибка запуска Telegram бота: {e}")
+    # Запуск Telegram бота
+    if TELEGRAM_AVAILABLE:
+        telegram_token = settings.integrations.get("telegram", {}).get("bot_token")
+        if telegram_token:
+            try:
+                from .telegram import ZnatokTelegramBot
+                global TELEGRAM_BOT_INSTANCE
+                TELEGRAM_BOT_INSTANCE = ZnatokTelegramBot(
+                    backend_url=os.getenv("BASE_URL", "http://localhost:8000")
+                )
+                asyncio.create_task(TELEGRAM_BOT_INSTANCE.run())
+                logger.info("Telegram бот запущен")
+            except Exception as e:
+                logger.error(f"Ошибка запуска Telegram бота: {e}")
+        else:
+            logger.warning("Telegram бот не запущен — токен не задан в настройках")
     else:
-        logger.warning("Telegram бот не запущен - токен не задан или интеграция недоступна")
-    
-    # Битрикс24 бот запускается автоматически через роутер
-    if BITRIX24_AVAILABLE and os.getenv("BITRIX24_CLIENT_SECRET"):
-        logger.info("Bitrix24 бот готов к работе")
-    else:
-        logger.warning("Bitrix24 бот не настроен - секрет не задан или интеграция недоступна")
+        logger.warning("Telegram интеграция недоступна")
+
+    # Bitrix24: роутер уже подключён, проверяем настройки
+    if BITRIX24_ROUTER_AVAILABLE:
+        bitrix_secret = settings.integrations.get("bitrix24", {}).get("client_secret")
+        if bitrix_secret:
+            logger.info("Bitrix24 интеграция активна")
+        else:
+            logger.warning("Bitrix24 не настроен — отсутствует client_secret")
 
 @app.get("/")
 async def root():
-    """Корневой эндпоинт с информацией о сервисе"""
     integrations = []
+    settings = load_settings()
     
-    if TELEGRAM_AVAILABLE and os.getenv("TELEGRAM_BOT_TOKEN"):
+    if TELEGRAM_AVAILABLE and settings.integrations.get("telegram", {}).get("bot_token"):
         integrations.append("telegram")
-    if BITRIX24_AVAILABLE and os.getenv("BITRIX24_CLIENT_SECRET"):
+    if BITRIX24_ROUTER_AVAILABLE and settings.integrations.get("bitrix24", {}).get("client_secret"):
         integrations.append("bitrix24")
     
     return {
@@ -252,51 +321,14 @@ async def root():
         "integrations": integrations,
         "endpoints": {
             "api": "/api/health",
-            "bitrix24": "/bitrix24/health" if BITRIX24_AVAILABLE else "not_available",
+            "bitrix24": "/bitrix24/health" if BITRIX24_ROUTER_AVAILABLE else "not_available",
             "docs": "/docs"
         }
     }
 
-# Эндпоинт для проверки статуса интеграций
-@app.get("/integrations")
-async def get_integrations_status():
-    """Возвращает статус всех интеграций"""
-    integrations_status = {}
-    
-    # Telegram статус
-    if TELEGRAM_AVAILABLE:
-        integrations_status["telegram"] = {
-            "available": True,
-            "configured": bool(os.getenv("TELEGRAM_BOT_TOKEN")),
-            "health": "active" if os.getenv("TELEGRAM_BOT_TOKEN") else "not_configured"
-        }
-    else:
-        integrations_status["telegram"] = {
-            "available": False,
-            "configured": False,
-            "health": "integration_not_available"
-        }
-    
-    # Bitrix24 статус
-    if BITRIX24_AVAILABLE:
-        integrations_status["bitrix24"] = {
-            "available": True,
-            "configured": bool(os.getenv("BITRIX24_CLIENT_SECRET")),
-            "health": "active" if os.getenv("BITRIX24_CLIENT_SECRET") else "not_configured"
-        }
-    else:
-        integrations_status["bitrix24"] = {
-            "available": False,
-            "configured": False,
-            "health": "integration_not_available"
-        }
-    
-    return integrations_status
-
 # Глобальный обработчик ошибок
 @app.exception_handler(Exception)
-async def global_exception_handler(request, exc):
-    """Глобальный обработчик исключений"""
+async def global_exception_handler(request: Request, exc: Exception):
     logger.error(f"Глобальная ошибка: {exc}", exc_info=True)
     return JSONResponse(
         status_code=500,
