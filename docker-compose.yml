@@ -15,6 +15,7 @@ services:
     image: ivekov/znatok:latest
     container_name: znatok-backend
     env_file: .env
+    pull_policy: always
     ports:
       - "8000:8000"
     volumes:

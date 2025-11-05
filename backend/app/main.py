@@ -245,16 +245,17 @@ async def update_integrations(update: IntegrationUpdate):
     
     # Перезапуск Telegram бота, если изменился токен
     if TELEGRAM_AVAILABLE and update.telegram and "bot_token" in update.telegram:
-        global TELEGRAM_BOT_INSTANCE
-        if TELEGRAM_BOT_INSTANCE:
-            await stop_telegram_bot()
-            TELEGRAM_BOT_INSTANCE = None
-        if update.telegram["bot_token"]:
-            from .telegram import ZnatokTelegramBot
-            bot = ZnatokTelegramBot(backend_url=os.getenv("BASE_URL", "http://localhost:8000"))
-            TELEGRAM_BOT_INSTANCE = bot
-            asyncio.create_task(bot.run())
+        new_token = update.telegram["bot_token"]
+        if new_token:
+            from .telegram import start_telegram_bot
+            backend_url = os.getenv("BASE_URL", "http://localhost:8000")
+            asyncio.create_task(start_telegram_bot(backend_url=backend_url, bot_token=new_token))
             logger.info("Telegram бот перезапущен с новым токеном")
+        else:
+            # Опционально: остановить бота, если токен удалён
+            from .telegram import stop_telegram_bot
+            await stop_telegram_bot()
+            logger.info("Telegram бот остановлен (токен удалён)")
     
     return {"status": "ok"}
 
