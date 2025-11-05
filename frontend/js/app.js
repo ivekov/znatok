@@ -719,6 +719,8 @@ class ZnatokApp {
 
     async saveSettings() {
         const provider = document.getElementById('provider-select').value;
+        const currentSettingsRes = await fetch('/api/settings');
+        const currentSettings = await currentSettingsRes.json();
         
         const settings = {
             current_provider: provider,
@@ -744,6 +746,10 @@ class ZnatokApp {
                     temperature: parseFloat(document.getElementById('temperature').value),
                     max_tokens: parseInt(document.getElementById('max-tokens').value)
                 }
+            },
+            integrations: currentSettings.integrations || {
+                telegram: { bot_token: null },
+                bitrix24: { client_secret: null }
             }
         };
 
