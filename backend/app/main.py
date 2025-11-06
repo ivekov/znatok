@@ -2,11 +2,13 @@
 import os
 import logging
 import asyncio
-from typing import List, Dict, Any
+from typing import List, Optional, Dict, Any
 from fastapi import FastAPI, HTTPException, File, UploadFile, Form, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+from collections import defaultdict
+from datetime import datetime, timedelta
 from dotenv import load_dotenv
 
 # Загрузка конфигурации
@@ -15,6 +17,20 @@ UPLOAD_DIR = "/app/uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("znatok")
+
+# Простое in-memory хранилище контекста (в проде — Redis)
+_CHAT_CONTEXTS = defaultdict(list)  # conversation_id -> list of messages
+_CONTEXT_TTL = timedelta(minutes=30)
+
+def _cleanup_old_contexts():
+    """Очистка старых контекстов"""
+    now = datetime.utcnow()
+    to_delete = []
+    for conv_id, msgs in _CHAT_CONTEXTS.items():
+        if msgs and (now - msgs[-1].get("timestamp", now)) > _CONTEXT_TTL:
+            to_delete.append(conv_id)
+    for conv_id in to_delete:
+        del _CHAT_CONTEXTS[conv_id]
 
 # Инициализация FastAPI
 app = FastAPI(title="Znatok API", version="0.1.0")
@@ -34,7 +50,7 @@ from .rag import search_qdrant, get_llm_response
 from .models import ProviderType, ProviderConfig, Settings, load_settings, save_settings
 
 # Глобальные переменные для интеграций
-TELEGRAM_BOT_INSTANCE = None
+_active_telegram_bot = None
 BITRIX24_ROUTER_AVAILABLE = False
 
 # Попытка импорта интеграций
@@ -57,10 +73,12 @@ except ImportError as e:
 class AskRequest(BaseModel):
     question: str
     user_department: str = "all"
+    conversation_id: Optional[str] = None
 
 class AskResponse(BaseModel):
     answer: str
     sources: List[dict]
+    conversation_id: str
 
 class IntegrationUpdate(BaseModel):
     telegram: Dict[str, Any] = {}
@@ -77,20 +95,33 @@ async def ask(request: AskRequest):
     if not question:
         raise HTTPException(status_code=400, detail="Question is required")
 
+    conv_id = request.conversation_id or os.urandom(8).hex()
+    context_question = question
+
+    if conv_id in _CHAT_CONTEXTS and _CHAT_CONTEXTS[conv_id]:
+        history = "\n".join([
+            f"{'Вопрос' if msg['role'] == 'user' else 'Ответ'}: {msg['content']}"
+            for msg in _CHAT_CONTEXTS[conv_id][-2:]
+        ])
+        context_question = f"История диалога:\n{history}\n\nНовый вопрос: {question}"
+
     try:
-        hits = search_qdrant(question, request.user_department)
+        hits = search_qdrant(context_question, request.user_department)
     except Exception as e:
         logger.error(f"Qdrant search error: {e}")
         raise HTTPException(status_code=500, detail="Search failed")
 
     if not hits:
+        _CHAT_CONTEXTS[conv_id].append({"role": "user", "content": question, "timestamp": datetime.utcnow()})
+        _CHAT_CONTEXTS[conv_id].append({"role": "assistant", "content": "Не нашёл ответа в документах компании.", "timestamp": datetime.utcnow()})
         return AskResponse(
             answer="Не нашёл ответа в документах компании.",
-            sources=[]
+            sources=[],
+            conversation_id=conv_id
         )
 
     context = "\n\n".join([f"Документ: {hit['source']}\n{hit['text']}" for hit in hits])
-    prompt = f"Контекст:\n{context}\n\nВопрос: {question}\n\nОтвет:"
+    prompt = f"Контекст:\n{context}\n\nВопрос: {context_question}\n\nОтвет:"
 
     try:
         answer = await get_llm_response(prompt)
@@ -98,7 +129,6 @@ async def ask(request: AskRequest):
         logger.error(f"LLM error: {e}")
         raise HTTPException(status_code=502, detail="AI service unavailable")
 
-    # Уникальные источники
     unique_sources = set()
     sources = []
     for hit in hits:
@@ -106,8 +136,14 @@ async def ask(request: AskRequest):
         if source_name not in unique_sources:
             unique_sources.add(source_name)
             sources.append({"source": source_name})
-    
-    return AskResponse(answer=answer, sources=sources)
+
+    _CHAT_CONTEXTS[conv_id].append({"role": "user", "content": question, "timestamp": datetime.utcnow()})
+    _CHAT_CONTEXTS[conv_id].append({"role": "assistant", "content": answer, "timestamp": datetime.utcnow()})
+
+    if len(_CHAT_CONTEXTS) > 1000:
+        _cleanup_old_contexts()
+
+    return AskResponse(answer=answer, sources=sources, conversation_id=conv_id)
 
 @app.post("/api/upload")
 async def upload_files(
@@ -202,11 +238,9 @@ async def get_providers():
         ]
     }
 
-# === НОВЫЕ ЭНДПОИНТЫ ДЛЯ ИНТЕГРАЦИЙ ===
-
+# Эндпоинты для интеграций
 @app.get("/api/integrations")
 async def get_integrations():
-    """Возвращает состояние интеграций и их настройки (без секретов в UI)"""
     settings = load_settings()
     integrations = settings.integrations or {}
     
@@ -230,12 +264,10 @@ async def get_integrations():
 
 @app.post("/api/integrations")
 async def update_integrations(update: IntegrationUpdate):
-    """Обновляет настройки интеграций"""
     settings = load_settings()
     if not settings.integrations:
         settings.integrations = {"telegram": {}, "bitrix24": {}}
     
-    # Обновляем только указанные поля
     if update.telegram:
         settings.integrations["telegram"]["bot_token"] = update.telegram.get("bot_token")
     if update.bitrix24:
@@ -243,23 +275,22 @@ async def update_integrations(update: IntegrationUpdate):
     
     save_settings(settings)
     
-    # Перезапуск Telegram бота, если изменился токен
+    # Перезапуск Telegram бота
     if TELEGRAM_AVAILABLE and update.telegram and "bot_token" in update.telegram:
-        new_token = update.telegram["bot_token"]
-        if new_token:
-            from .telegram import start_telegram_bot
-            backend_url = os.getenv("BASE_URL", "http://localhost:8000")
-            asyncio.create_task(start_telegram_bot(backend_url=backend_url, bot_token=new_token))
-            logger.info("Telegram бот перезапущен с новым токеном")
-        else:
-            # Опционально: остановить бота, если токен удалён
-            from .telegram import stop_telegram_bot
+        global _active_telegram_bot
+        if _active_telegram_bot:
             await stop_telegram_bot()
-            logger.info("Telegram бот остановлен (токен удалён)")
+            _active_telegram_bot = None
+        if update.telegram["bot_token"]:
+            backend_url = os.getenv("BASE_URL", "http://localhost:8000")
+            _active_telegram_bot = asyncio.create_task(
+                start_telegram_bot(backend_url=backend_url, bot_token=update.telegram["bot_token"])
+            )
+            logger.info("Telegram бот перезапущен с новым токеном")
     
     return {"status": "ok"}
 
-# Эндпоинт сброса коллекции (для разработки)
+# Эндпоинт сброса коллекции (только для разработки)
 @app.delete("/api/reset-collection")
 async def reset_collection():
     try:
@@ -284,12 +315,11 @@ async def startup_event():
         telegram_token = settings.integrations.get("telegram", {}).get("bot_token")
         if telegram_token:
             try:
-                from .telegram import ZnatokTelegramBot
-                global TELEGRAM_BOT_INSTANCE
-                TELEGRAM_BOT_INSTANCE = ZnatokTelegramBot(
-                    backend_url=os.getenv("BASE_URL", "http://localhost:8000")
+                backend_url = os.getenv("BASE_URL", "http://localhost:8000")
+                global _active_telegram_bot
+                _active_telegram_bot = asyncio.create_task(
+                    start_telegram_bot(backend_url=backend_url, bot_token=telegram_token)
                 )
-                asyncio.create_task(TELEGRAM_BOT_INSTANCE.run())
                 logger.info("Telegram бот запущен")
             except Exception as e:
                 logger.error(f"Ошибка запуска Telegram бота: {e}")
@@ -298,7 +328,7 @@ async def startup_event():
     else:
         logger.warning("Telegram интеграция недоступна")
 
-    # Bitrix24: роутер уже подключён, проверяем настройки
+    # Bitrix24: роутер уже подключён
     if BITRIX24_ROUTER_AVAILABLE:
         bitrix_secret = settings.integrations.get("bitrix24", {}).get("client_secret")
         if bitrix_secret:
@@ -326,6 +356,11 @@ async def root():
             "docs": "/docs"
         }
     }
+
+# Эндпоинт статуса интеграций (дублирует /api/integrations для обратной совместимости)
+@app.get("/integrations")
+async def get_integrations_status():
+    return await get_integrations()
 
 # Глобальный обработчик ошибок
 @app.exception_handler(Exception)

@@ -2,7 +2,7 @@
 
 .integrations-container {
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
     gap: 1.5rem;
     max-width: 700px;
 }
@@ -13,6 +13,7 @@
     border-radius: 16px;
     padding: 1.5rem;
     transition: all 0.2s ease;
+    min-width: 480px;
 }
 
 .integration-card:hover {

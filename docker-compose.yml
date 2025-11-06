@@ -32,6 +32,7 @@ services:
       context: .
       dockerfile: nginx/Dockerfile
     container_name: znatok-web
+    pull_policy: always
     ports:
       - "8080:80"
     depends_on:
