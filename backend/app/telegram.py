@@ -16,6 +16,14 @@ class ZnatokTelegramBot:
         self.bot_token = bot_token
         self.backend_url = backend_url.rstrip("/")
         self.application = None
+        self.bot_username = None  # будет заполнен после инициализации
+
+    async def _fetch_bot_username(self):
+        """Получаем username бота для корректной обработки упоминаний"""
+        bot = self.application.bot
+        me = await bot.get_me()
+        self.bot_username = me.username
+        logger.info(f"Telegram бот инициализирован как @{self.bot_username}")
 
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         welcome_text = """
@@ -44,13 +52,39 @@ class ZnatokTelegramBot:
         await update.message.reply_text(help_text, parse_mode='Markdown')
 
     async def ask_question(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        # В личке — отвечаем на всё
+        if update.message.chat.type == "private":
+            await self._process_question(update)
+            return
+
+        # В группе — только на упоминания или реплаи
+        if update.message.reply_to_message and update.message.reply_to_message.from_user.id == context.bot.id:
+            await self._process_question(update)
+            return
+
+        if f"@{self.bot_username}" in update.message.text:
+            # Убираем упоминание из текста
+            clean_text = update.message.text.replace(f"@{self.bot_username}", "").strip()
+            if clean_text:
+                # Подменяем текст для обработки
+                temp_msg = update.message
+                temp_msg.text = clean_text
+                await self._process_question(temp_msg)
+            else:
+                await update.message.reply_text("Задайте вопрос после упоминания.")
+            return
+
+        # Игнорируем всё остальное в группе
+        return
+
+    async def _process_question(self, update: Update):
         user_question = update.message.text.strip()
         if not user_question:
             await update.message.reply_text("Пожалуйста, задайте вопрос.")
             return
 
-        await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
-        logger.info(f"Telegram вопрос: {user_question}")
+        await update.message.chat.send_action(action="typing")
+        logger.info(f"Telegram вопрос от {update.effective_user.id}: {user_question}")
 
         try:
             async with aiohttp.ClientSession() as session:
@@ -101,10 +135,11 @@ class ZnatokTelegramBot:
         self.application.add_error_handler(self.error_handler)
 
     async def run(self):
-        logger.info("Запуск Telegram бота с токеном (скрыт)...")
+        logger.info("Запуск Telegram бота...")
         self.application = Application.builder().token(self.bot_token).build()
         self.setup_handlers()
         await self.application.initialize()
+        await self._fetch_bot_username()  # Получаем username
         await self.application.start()
         await self.application.updater.start_polling()
 

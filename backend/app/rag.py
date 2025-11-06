@@ -3,7 +3,7 @@ import os
 import logging
 import httpx
 import uuid
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from qdrant_client import QdrantClient
 from qdrant_client.models import Filter, FieldCondition, MatchValue
 from sentence_transformers import SentenceTransformer
@@ -169,7 +169,6 @@ class MistralProvider(LLMProvider):
 # ======================
 
 def get_llm_provider():
-    """Возвращает LLM провайдер на основе текущих настроек"""
     settings = load_settings()
     provider_type = settings.current_provider
     provider_config = settings.providers.get(provider_type)
@@ -191,7 +190,6 @@ def get_llm_provider():
 # ======================
 
 async def get_llm_response(prompt: str) -> str:
-    """Получить ответ от LLM используя текущий провайдер"""
     try:
         provider = get_llm_provider()
         return await provider.generate_response(prompt)
@@ -241,14 +239,18 @@ def search_qdrant(question: str, department: Optional[str] = None) -> List[dict]
             limit=4
         )
 
-        return [
+        # ФИЛЬТРАЦИЯ ПО SCORE > 0.6
+        filtered_hits = [
             {
                 "text": hit.payload.get("text", ""),
                 "source": hit.payload.get("source", "неизвестный источник"),
                 "score": hit.score
             }
             for hit in search_result
+            if hit.score > 0.6  # ← критически важное условие
         ]
+
+        return filtered_hits
 
     except Exception as e:
         logger.error(f"Ошибка поиска в Qdrant: {e}", exc_info=True)
