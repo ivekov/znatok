@@ -239,7 +239,7 @@ def search_qdrant(question: str, department: Optional[str] = None) -> List[dict]
             limit=4
         )
 
-        # ФИЛЬТРАЦИЯ ПО SCORE > 0.6
+        # ФИЛЬТРАЦИЯ ПО SCORE > 0.3
         filtered_hits = [
             {
                 "text": hit.payload.get("text", ""),
@@ -247,7 +247,7 @@ def search_qdrant(question: str, department: Optional[str] = None) -> List[dict]
                 "score": hit.score
             }
             for hit in search_result
-            if hit.score > 0.6  # ← критически важное условие
+            if hit.score > 0.3  # ← критически важное условие
         ]
 
         return filtered_hits
