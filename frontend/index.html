@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="css/integrations.css">
+    <link rel="stylesheet" href="css/sources.css">
 </head>
 <body>
     <div class="app-container">
@@ -270,6 +271,47 @@
                                     <li>Скопируйте <code>CLIENT_SECRET</code> и вставьте сюда.</li>
                                 </ol>
                             </details>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Sources Section -->
+            <section id="sources-section" class="content-section">
+                <div class="section-header">
+                    <h2>Внешние источники знаний</h2>
+                    <p>Автоматическая индексация статей из внешних систем</p>
+                </div>
+
+                <div class="sources-container">
+                    <!-- Bitrix24 KB Card -->
+                    <div class="source-card">
+                        <div class="source-header">
+                            <i class="bi bi-building"></i>
+                            <h4>Битрикс24 — База знаний</h4>
+                            <span class="source-status" id="bitrix24-kb-status">Не настроен</span>
+                        </div>
+                        <div class="source-body">
+                            <div class="setting-group">
+                                <label><input type="checkbox" id="bitrix24-kb-enabled"> Включить синхронизацию</label>
+                            </div>
+                            <div class="setting-group">
+                                <label>Домен Битрикс24:</label>
+                                <input type="text" id="bitrix24-domain" class="setting-input" placeholder="mycompany.bitrix24.ru">
+                            </div>
+                            <div class="setting-group">
+                                <label>Access Token:</label>
+                                <input type="password" id="bitrix24-access-token" class="setting-input" placeholder="Ваш токен доступа...">
+                                <small>Получите в CRM → Приложения → Локальные приложения</small>
+                            </div>
+                            <div class="source-actions">
+                                <button class="btn-secondary" id="test-bitrix24-kb">Проверить подключение</button>
+                                <button class="btn-primary" id="save-bitrix24-kb">Сохранить</button>
+                            </div>
+                            <div class="source-meta" id="bitrix24-kb-meta" style="display:none;">
+                                <p>Последняя синхронизация: <span id="bitrix24-last-sync">—</span></p>
+                                <button class="btn-secondary" id="sync-bitrix24-kb">Запустить синхронизацию</button>
+                            </div>
                         </div>
                     </div>
                 </div>

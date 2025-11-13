@@ -2,14 +2,16 @@
 import os
 import logging
 import asyncio
+import httpx
 from typing import List, Optional, Dict, Any
 from fastapi import FastAPI, HTTPException, File, UploadFile, Form, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
+
 
 # Загрузка конфигурации
 load_dotenv()
@@ -31,6 +33,76 @@ def _cleanup_old_contexts():
             to_delete.append(conv_id)
     for conv_id in to_delete:
         del _CHAT_CONTEXTS[conv_id]
+
+async def sync_bitrix24_kb():
+    """Синхронизирует статьи из Битрикс24 Базы знаний"""
+    settings = load_settings()
+    kb_config = settings.knowledge_sources.get("bitrix24_kb", {})
+    
+    if not kb_config.get("enabled") or not kb_config.get("domain") or not kb_config.get("access_token"):
+        logger.warning("Bitrix24 KB sync skipped: not configured")
+        return {"status": "skipped", "reason": "not configured"}
+
+    domain = kb_config["domain"]
+    token = kb_config["access_token"]
+    last_sync = kb_config.get("last_sync")
+    
+    if not domain.startswith("https://"):
+        domain = f"https://{domain.strip('/')}"
+    
+    articles_synced = 0
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            # Получаем список статей
+            resp = await client.post(
+                f"{domain}/rest/crm/knowledge-base/article.list",
+                json={"auth": token}
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            
+            if "result" not in data or "articles" not in data["result"]:
+                raise ValueError(f"Unexpected Bitrix24 response: {data}")
+            
+            articles = data["result"]["articles"]
+            now = datetime.now(timezone.utc).isoformat()
+            
+            for article in articles:
+                # Пропускаем, если не изменилась с последней синхронизации
+                updated = article.get("updated")
+                if last_sync and updated and updated <= last_sync:
+                    continue
+                
+                # Получаем полный текст статьи
+                detail_resp = await client.post(
+                    f"{domain}/rest/crm/knowledge-base/article.get",
+                    json={"auth": token, "id": article["id"]}
+                )
+                detail_resp.raise_for_status()
+                detail = detail_resp.json()
+                
+                if "result" not in detail or "text" not in detail["result"]:
+                    logger.warning(f"Пропускаем статью {article['id']}: нет текста")
+                    continue
+                
+                text = detail["result"]["text"]
+                source_name = f"bitrix24_kb:{article['id']}"
+                
+                # Индексируем
+                await index_text_content(text, source_name, "all")
+                articles_synced += 1
+            
+            # Обновляем время последней синхронизации
+            kb_config["last_sync"] = now
+            settings.knowledge_sources["bitrix24_kb"] = kb_config
+            save_settings(settings)
+            
+            logger.info(f"Синхронизировано {articles_synced} статей из Bitrix24 KB")
+            return {"status": "ok", "synced": articles_synced}
+            
+    except Exception as e:
+        logger.error(f"Ошибка синхронизации Bitrix24 KB: {e}")
+        return {"status": "error", "message": str(e)}
 
 # Инициализация FastAPI
 app = FastAPI(title="Znatok API", version="0.1.0")
@@ -370,3 +442,23 @@ async def global_exception_handler(request: Request, exc: Exception):
         status_code=500,
         content={"detail": "Внутренняя ошибка сервера"}
     )
+
+# Эндпоинт для ручного запуска
+@app.post("/api/sources/bitrix24/kb/sync")
+async def trigger_bitrix24_kb_sync():
+    result = await sync_bitrix24_kb()
+    if result["status"] == "error":
+        raise HTTPException(status_code=500, detail=result["message"])
+    return result
+
+# Эндпоинт для получения статуса
+@app.get("/api/sources/bitrix24/kb/status")
+async def get_bitrix24_kb_status():
+    settings = load_settings()
+    kb = settings.knowledge_sources.get("bitrix24_kb", {})
+    return {
+        "enabled": kb.get("enabled", False),
+        "domain": kb.get("domain"),
+        "last_sync": kb.get("last_sync"),
+        "configured": bool(kb.get("domain") and kb.get("access_token"))
+    }

@@ -16,10 +16,9 @@ class ZnatokTelegramBot:
         self.bot_token = bot_token
         self.backend_url = backend_url.rstrip("/")
         self.application = None
-        self.bot_username = None  # будет заполнен после инициализации
+        self.bot_username = None
 
     async def _fetch_bot_username(self):
-        """Получаем username бота для корректной обработки упоминаний"""
         bot = self.application.bot
         me = await bot.get_me()
         self.bot_username = me.username
@@ -54,22 +53,18 @@ class ZnatokTelegramBot:
     async def ask_question(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         # В личке — отвечаем на всё
         if update.message.chat.type == "private":
-            await self._process_question(update)
+            await self._process_question(update, update.message.text)
             return
 
         # В группе — только на упоминания или реплаи
         if update.message.reply_to_message and update.message.reply_to_message.from_user.id == context.bot.id:
-            await self._process_question(update)
+            await self._process_question(update, update.message.text)
             return
 
         if f"@{self.bot_username}" in update.message.text:
-            # Убираем упоминание из текста
             clean_text = update.message.text.replace(f"@{self.bot_username}", "").strip()
             if clean_text:
-                # Подменяем текст для обработки
-                temp_msg = update.message
-                temp_msg.text = clean_text
-                await self._process_question(temp_msg)
+                await self._process_question(update, clean_text)
             else:
                 await update.message.reply_text("Задайте вопрос после упоминания.")
             return
@@ -77,9 +72,8 @@ class ZnatokTelegramBot:
         # Игнорируем всё остальное в группе
         return
 
-    async def _process_question(self, update: Update):
-        user_question = update.message.text.strip()
-        if not user_question:
+    async def _process_question(self, update: Update, user_question: str):
+        if not user_question.strip():
             await update.message.reply_text("Пожалуйста, задайте вопрос.")
             return
 
@@ -139,7 +133,7 @@ class ZnatokTelegramBot:
         self.application = Application.builder().token(self.bot_token).build()
         self.setup_handlers()
         await self.application.initialize()
-        await self._fetch_bot_username()  # Получаем username
+        await self._fetch_bot_username()
         await self.application.start()
         await self.application.updater.start_polling()
 
