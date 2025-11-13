@@ -1,5 +1,5 @@
 # backend/Dockerfile
-FROM python:3.11-slim
+FROM python:3.11-slim-bullseye
 
 # Установка системных зависимостей + сертификатов
 RUN apt-get update && apt-get install -y \

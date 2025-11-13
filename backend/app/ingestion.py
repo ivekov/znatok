@@ -154,3 +154,48 @@ def index_document(filepath: str, filename: str, department: str):
     except Exception as e:
         logger.error(f"Ошибка индексации {filename}: {e}", exc_info=True)
         raise
+    
+async def index_text_content(text: str, source: str, department: str = "all"):
+    """
+    Индексирует чистый текст (без файла на диске)
+    """
+    if not text.strip():
+        raise ValueError("Пустой текст")
+
+    chunks = chunk_text(text)
+    if not chunks:
+        raise ValueError("Нет чанков")
+
+    model = get_embedding_model()
+    embeddings = model.encode([f"passage: {chunk}" for chunk in chunks]).tolist()
+
+    points = []
+    uploaded_at = datetime.utcnow().isoformat()
+    for chunk, emb in zip(chunks, embeddings):
+        points.append(PointStruct(
+            id=str(uuid.uuid4()),
+            vector=emb,
+            payload={
+                "text": chunk,
+                "source": source,
+                "department": department,
+                "uploaded_at": uploaded_at
+            }
+        ))
+
+    collection = os.getenv("QDRANT_COLLECTION", "znatok_chunks")
+    ensure_collection_exists(collection)
+    client = get_qdrant_client()
+    
+    # Удаляем старую версию по source
+    delete_filter = Filter(
+        must=[FieldCondition(key="source", match=MatchValue(value=source))]
+    )
+    client.delete(
+        collection_name=collection,
+        points_selector=FilterSelector(filter=delete_filter)
+    )
+    
+    client.upsert(collection_name=collection, points=points)
+    logger.info(f"Проиндексировано {len(chunks)} чанков из источника: {source}")
+    return len(chunks)

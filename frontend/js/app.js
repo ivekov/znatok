@@ -103,6 +103,16 @@ class ZnatokApp {
             });
         }
 
+        document.getElementById('save-bitrix24-kb')?.addEventListener('click', () => {
+            this.saveBitrix24KBSource();
+        });
+        document.getElementById('sync-bitrix24-kb')?.addEventListener('click', () => {
+            this.syncBitrix24KB();
+        });
+        document.getElementById('test-bitrix24-kb')?.addEventListener('click', () => {
+            this.testBitrix24KB();
+        });
+
         // Modals
         document.querySelectorAll('.modal-close').forEach(btn => {
             btn.addEventListener('click', (e) => {
@@ -169,6 +179,9 @@ class ZnatokApp {
             const IntegrationsManager = (await import('./integrations.js')).default;
             this.integrationsManager = new IntegrationsManager(this);
         }
+        if (sectionName === 'sources') {
+            await this.loadSourcesStatus();
+        }
     }
 
     async sendMessage() {
@@ -214,6 +227,85 @@ class ZnatokApp {
             const errorMessage = this.handleApiError(error, 'Не удалось получить ответ');
             this.addMessage('system', errorMessage);
             console.error('Chat error:', error);
+        }
+    }
+
+    async saveBitrix24KBSource() {
+        const enabled = document.getElementById('bitrix24-kb-enabled').checked;
+        const domain = document.getElementById('bitrix24-domain').value.trim();
+        const token = document.getElementById('bitrix24-access-token').value.trim();
+
+        if (enabled && (!domain || !token)) {
+            this.showNotification('Заполните домен и токен', 'warning');
+            return;
+        }
+
+        // Загружаем полные настройки, чтобы не затереть другие поля
+        const settingsRes = await fetch('/api/settings');
+        const settings = await settingsRes.json();
+
+        settings.knowledge_sources = settings.knowledge_sources || {};
+        settings.knowledge_sources.bitrix24_kb = {
+            enabled,
+            domain: enabled ? domain : null,
+            access_token: enabled ? token : null
+        };
+
+        const res = await fetch('/api/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(settings)
+        });
+
+        if (res.ok) {
+            this.showNotification('Настройки сохранены', 'success');
+            await this.loadSourcesStatus();
+        } else {
+            this.showNotification('Ошибка сохранения', 'error');
+        }
+    }
+
+    async loadSourcesStatus() {
+        try {
+            const res = await fetch('/api/sources/bitrix24/kb/status');
+            const status = await res.json();
+            
+            document.getElementById('bitrix24-kb-enabled').checked = status.enabled;
+            document.getElementById('bitrix24-domain').value = status.domain || '';
+            document.getElementById('bitrix24-access-token').value = status.configured ? '••••••••' : '';
+            
+            const metaEl = document.getElementById('bitrix24-kb-meta');
+            const statusEl = document.getElementById('bitrix24-kb-status');
+            
+            if (status.configured) {
+                statusEl.textContent = status.enabled ? 'Активен' : 'Отключён';
+                statusEl.className = 'source-status status-active';
+                metaEl.style.display = 'block';
+                document.getElementById('bitrix24-last-sync').textContent = 
+                    status.last_sync ? new Date(status.last_sync).toLocaleString('ru-RU') : 'никогда';
+            } else {
+                statusEl.textContent = 'Не настроен';
+                statusEl.className = 'source-status status-inactive';
+                metaEl.style.display = 'none';
+            }
+        } catch (e) {
+            console.error('Ошибка загрузки статуса источников:', e);
+        }
+    }
+
+    async syncBitrix24KB() {
+        this.showNotification('Синхронизация запущена...', 'info');
+        try {
+            const res = await fetch('/api/sources/bitrix24/kb/sync', { method: 'POST' });
+            const data = await res.json();
+            if (data.status === 'ok') {
+                this.showNotification(`✅ Синхронизировано ${data.synced} статей`, 'success');
+                await this.loadSourcesStatus();
+            } else {
+                this.showNotification(`❌ Ошибка: ${data.message}`, 'error');
+            }
+        } catch (e) {
+            this.showNotification('❌ Ошибка синхронизации', 'error');
         }
     }
 

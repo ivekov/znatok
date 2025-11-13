@@ -21,12 +21,21 @@ class ProviderConfig(BaseModel):
     temperature: float = 0.1
     max_tokens: int = 512
 
+class Bitrix24KBSource(BaseModel):
+    enabled: bool = False
+    domain: Optional[str] = None  # например, "mycompany.bitrix24.ru"
+    access_token: Optional[str] = None
+    last_sync: Optional[str] = None  # ISO datetime
+
 class Settings(BaseModel):
     current_provider: ProviderType = ProviderType.GIGACHAT
     providers: Dict[ProviderType, ProviderConfig] = {}
     integrations: Dict[str, Dict[str, Optional[str]]] = {
         "telegram": {"bot_token": None},
         "bitrix24": {"client_secret": None}
+    }
+    knowledge_sources: Dict[str, Any] = {
+        "bitrix24_kb": Bitrix24KBSource().dict()
     }
 
 SETTINGS_FILE = "/app/data/settings.json"
@@ -42,11 +51,9 @@ def load_settings() -> Settings:
                     data['providers'] = {
                         ProviderType(k): ProviderConfig(**v) for k, v in data['providers'].items()
                     }
-                # Убедимся, что integrations всегда существует
-                if 'integrations' not in data:
-                    data['integrations'] = {
-                        "telegram": {"bot_token": None},
-                        "bitrix24": {"client_secret": None}
+                if 'knowledge_sources' not in data:
+                    data['knowledge_sources'] = {
+                        "bitrix24_kb": Bitrix24KBSource().dict()
                     }
                 return Settings(**data)
         return Settings()
