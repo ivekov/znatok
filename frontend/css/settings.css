@@ -1,0 +1,62 @@
+/* frontend/css/settings.css */
+
+.settings-container {
+    max-width: 600px;
+}
+
+.provider-settings {
+    display: none;
+    padding: 1.5rem;
+    border: 1px solid var(--border-light);
+    border-radius: 12px;
+    background: var(--bg-glass);
+    margin-bottom: 1.5rem;
+}
+
+.provider-settings.active {
+    display: block;
+}
+
+.setting-group small {
+    display: block;
+    margin-top: 0.25rem;
+    color: var(--text-muted);
+    font-size: 0.875rem;
+}
+
+.setting-group small a {
+    color: var(--accent-primary);
+    text-decoration: none;
+}
+
+.setting-group small a:hover {
+    text-decoration: underline;
+}
+
+.slider-container {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.slider-container input[type="range"] {
+    flex: 1;
+}
+
+#temperature-value {
+    min-width: 40px;
+    text-align: center;
+    font-weight: 500;
+}
+
+.settings-actions {
+    display: flex;
+    gap: 1rem;
+    margin-top: 2rem;
+}
+
+@media (max-width: 768px) {
+    .settings-actions {
+        flex-direction: column;
+    }
+}
