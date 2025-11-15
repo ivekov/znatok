@@ -1,0 +1,160 @@
+/* frontend/css/layout.css */
+
+.app-container {
+    display: flex;
+    height: 100vh;
+}
+
+/* Sidebar */
+.sidebar {
+    width: 280px;
+    background: var(--bg-secondary);
+    border-right: 1px solid var(--border-light);
+    display: flex;
+    flex-direction: column;
+    padding: 1.5rem 1rem;
+}
+
+.sidebar-header {
+    margin-bottom: 2rem;
+}
+
+.logo {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.logo i {
+    font-size: 1.5rem;
+    color: var(--accent-primary);
+}
+
+.nav-items {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    flex: 1;
+}
+
+.nav-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-size: 0.95rem;
+}
+
+.nav-btn:hover {
+    background: var(--bg-glass);
+    color: var(--text-primary);
+}
+
+.nav-btn.active {
+    background: var(--accent-gradient);
+    color: white;
+}
+
+.nav-btn i {
+    font-size: 1.1rem;
+}
+
+.sidebar-footer {
+    margin-top: auto;
+}
+
+.theme-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    width: 100%;
+}
+
+.theme-toggle:hover {
+    background: var(--bg-glass);
+    color: var(--text-primary);
+}
+
+/* Main Content */
+.main-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-primary);
+}
+
+.content-section {
+    display: none;
+    flex: 1;
+    flex-direction: column;
+    padding: 2rem;
+    overflow-y: auto; /* ← ВАЖНО: добавлен скролл */
+    overflow-x: hidden;
+    max-height: 100%;
+}
+
+.content-section.active {
+    display: flex;
+}
+
+/* Section Header */
+.section-header {
+    margin-bottom: 2rem;
+}
+
+.section-header h2 {
+    margin-bottom: 0.5rem;
+    color: var(--text-primary);
+}
+
+.section-header p {
+    color: var(--text-secondary);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .app-container {
+        flex-direction: column;
+    }
+    .sidebar {
+        width: 100%;
+        height: auto;
+        flex-direction: row;
+        padding: 1rem;
+    }
+    .sidebar-header {
+        margin-bottom: 0;
+        margin-right: 1rem;
+    }
+    .nav-items {
+        flex-direction: row;
+        flex: 1;
+        justify-content: center;
+    }
+    .nav-btn span {
+        display: none;
+    }
+    .sidebar-footer {
+        margin-top: 0;
+        margin-left: auto;
+    }
+    .content-section {
+        padding: 1rem;
+    }
+}

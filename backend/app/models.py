@@ -27,6 +27,14 @@ class Bitrix24KBSource(BaseModel):
     access_token: Optional[str] = None
     last_sync: Optional[str] = None  # ISO datetime
 
+class ConfluenceSource(BaseModel):
+    enabled: bool = False
+    base_url: Optional[str] = None          # Например: https://your-domain.atlassian.net/wiki
+    email: Optional[str] = None             # Почта админа
+    api_token: Optional[str] = None         # Токен из Atlassian
+    space_key: Optional[str] = None         # Опционально: пространство
+    last_sync: Optional[str] = None         # ISO datetime
+
 class Settings(BaseModel):
     current_provider: ProviderType = ProviderType.GIGACHAT
     providers: Dict[ProviderType, ProviderConfig] = {}
@@ -35,7 +43,8 @@ class Settings(BaseModel):
         "bitrix24": {"client_secret": None}
     }
     knowledge_sources: Dict[str, Any] = {
-        "bitrix24_kb": Bitrix24KBSource().dict()
+        "bitrix24_kb": Bitrix24KBSource().dict(),
+        "confluence": ConfluenceSource().dict()
     }
 
 SETTINGS_FILE = "/app/data/settings.json"

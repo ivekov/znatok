@@ -5,7 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Znatok AI Assistant</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
-    <link rel="stylesheet" href="style.css">
+    <!-- Базовые и компонентные стили -->
+    <link rel="stylesheet" href="css/base.css">
+    <link rel="stylesheet" href="css/layout.css">
+    <link rel="stylesheet" href="css/components.css">
+    <!-- Разделы -->
+    <link rel="stylesheet" href="css/chat.css">
+    <link rel="stylesheet" href="css/documents.css">
+    <link rel="stylesheet" href="css/settings.css">
     <link rel="stylesheet" href="css/integrations.css">
     <link rel="stylesheet" href="css/sources.css">
 </head>
@@ -31,14 +38,14 @@
                 </button>
                 <button class="nav-btn" data-section="settings">
                     <i class="bi bi-gear"></i>
-                    <span>Настройки LLM</span>
+                    <span>Настройки</span>
                 </button>
                 <button class="nav-btn" data-section="integrations">
                     <i class="bi bi-robot"></i>
                     <span>Интеграции</span>
                 </button>
                 <button class="nav-btn" data-section="sources">
-                    <i class="bi bi-database"></i>
+                    <i class="bi bi-book"></i>
                     <span>Источники</span>
                 </button>
             </div>
@@ -123,7 +130,6 @@
                 </div>
                 
                 <div class="settings-container">
-                    <!-- Выбор провайдера -->
                     <div class="setting-group">
                         <label for="provider-select">AI Провайдер:</label>
                         <select id="provider-select" class="setting-input">
@@ -133,7 +139,6 @@
                         </select>
                     </div>
 
-                    <!-- Настройки GigaChat -->
                     <div id="gigachat-settings" class="provider-settings active">
                         <div class="setting-group">
                             <label for="gigachat-api-key">Authorization Key:</label>
@@ -147,7 +152,6 @@
                         </div>
                     </div>
 
-                    <!-- Настройки Yandex GPT -->
                     <div id="yandexgpt-settings" class="provider-settings">
                         <div class="setting-group">
                             <label for="yandex-api-key">API Key:</label>
@@ -161,7 +165,6 @@
                         </div>
                     </div>
 
-                    <!-- Настройки Mistral -->
                     <div id="mistral-settings" class="provider-settings">
                         <div class="setting-group">
                             <label for="mistral-api-key">API Key:</label>
@@ -180,7 +183,6 @@
                         </div>
                     </div>
 
-                    <!-- Общие настройки -->
                     <div class="setting-group">
                         <label for="temperature">Температура:</label>
                         <div class="slider-container">
@@ -209,12 +211,11 @@
                 </div>
 
                 <div class="integrations-container">
-                    <!-- Telegram Card -->
-                    <div class="integration-card" id="telegram-card">
-                        <div class="integration-header">
+                    <div class="card">
+                        <div class="card-header">
                             <i class="bi bi-telegram"></i>
                             <h4>Telegram</h4>
-                            <span class="integration-status" id="telegram-status">Не настроен</span>
+                            <span class="card-status" id="telegram-status">Не настроен</span>
                         </div>
                         <div class="integration-body">
                             <p>Подключите Telegram-бота к вашему корпоративному помощнику.</p>
@@ -223,7 +224,7 @@
                                 <input type="password" id="telegram-bot-token" class="setting-input" placeholder="Ваш Telegram Bot Token...">
                                 <small>Получите у <a href="https://t.me/BotFather" target="_blank">@BotFather</a></small>
                             </div>
-                            <div class="integration-actions">
+                            <div class="card-actions">
                                 <button class="btn-secondary" id="test-telegram">Проверить</button>
                                 <button class="btn-primary" id="save-telegram">Сохранить</button>
                             </div>
@@ -239,36 +240,35 @@
                         </div>
                     </div>
 
-                    <!-- Bitrix24 Card -->
-                    <div class="integration-card" id="bitrix24-card">
-                        <div class="integration-header">
+                    <div class="card">
+                        <div class="card-header">
                             <i class="bi bi-building"></i>
                             <h4>Битрикс24</h4>
-                            <span class="integration-status" id="bitrix24-status">Не настроен</span>
+                            <span class="card-status" id="bitrix24-status">Не настроен</span>
                         </div>
                         <div class="integration-body">
                             <p>Подключите бота к мессенджеру Битрикс24 через вебхук.</p>
                             <div class="setting-group">
                                 <label>Client Secret:</label>
                                 <input type="password" id="bitrix24-secret" class="setting-input" placeholder="Ваш Bitrix24 Client Secret...">
-                                <small>Получите в <a href="https://partners.1c-bitrix.ru/personal/iblock/" target="_blank">CRM → Приложения</a></small>
+                                <small>Получите в CRM → Приложения → Входящие вебхуки (раздел «Входящие вебхуки»)</small>
                             </div>
                             <div class="setting-group">
                                 <label>Вебхук URL:</label>
-                                <input type="text" id="bitrix24-webhook-url" class="setting-input" readonly value="http://ваш-домен/bitrix24/webhook">
+                                <input type="text" id="bitrix24-webhook-url" class="setting-input" readonly>
                                 <small>Скопируйте этот URL в настройки вебхука в Битрикс24</small>
                             </div>
-                            <div class="integration-actions">
+                            <div class="card-actions">
                                 <button class="btn-secondary" id="test-bitrix24">Проверить</button>
                                 <button class="btn-primary" id="save-bitrix24">Сохранить</button>
                             </div>
                             <details class="integration-instructions">
                                 <summary>Инструкция по подключению</summary>
                                 <ol>
-                                    <li>Создайте приложение в Битрикс24 → «Разработчику» → «События».</li>
-                                    <li>Выберите событие <code>ONIMBOTMESSAGEADD</code> и <code>ONIMCOMMANDADD</code>.</li>
+                                    <li>Создайте <strong>входящий вебхук</strong> в Битрикс24 → Приложения → Входящие вебхуки.</li>
+                                    <li>Выберите события: <code>ONIMBOTMESSAGEADD</code>, <code>ONIMCOMMANDADD</code>.</li>
                                     <li>Укажите вебхук URL из поля выше.</li>
-                                    <li>Скопируйте <code>CLIENT_SECRET</code> и вставьте сюда.</li>
+                                    <li>Скопируйте <code>Access Token</code> (последняя часть URL) и вставьте как <code>Client Secret</code>.</li>
                                 </ol>
                             </details>
                         </div>
@@ -284,12 +284,11 @@
                 </div>
 
                 <div class="sources-container">
-                    <!-- Bitrix24 KB Card -->
-                    <div class="source-card">
-                        <div class="source-header">
+                    <div class="card">
+                        <div class="card-header">
                             <i class="bi bi-building"></i>
                             <h4>Битрикс24 — База знаний</h4>
-                            <span class="source-status" id="bitrix24-kb-status">Не настроен</span>
+                            <span class="card-status" id="bitrix24-kb-status">Не настроен</span>
                         </div>
                         <div class="source-body">
                             <div class="setting-group">
@@ -301,10 +300,10 @@
                             </div>
                             <div class="setting-group">
                                 <label>Access Token:</label>
-                                <input type="password" id="bitrix24-access-token" class="setting-input" placeholder="Ваш токен доступа...">
-                                <small>Получите в CRM → Приложения → Локальные приложения</small>
+                                <input type="password" id="bitrix24-access-token" class="setting-input" placeholder="Токен из входящего вебхука...">
+                                <small>Используйте Access Token из <strong>входящего вебхука</strong> с правами на Базу знаний</small>
                             </div>
-                            <div class="source-actions">
+                            <div class="card-actions">
                                 <button class="btn-secondary" id="test-bitrix24-kb">Проверить подключение</button>
                                 <button class="btn-primary" id="save-bitrix24-kb">Сохранить</button>
                             </div>
@@ -314,9 +313,45 @@
                             </div>
                         </div>
                     </div>
+                    <div class="card">
+                        <div class="card-header">
+                            <i class="bi bi-confluence"></i>
+                            <h4>Confluence</h4>
+                            <span class="card-status" id="confluence-status">Не настроен</span>
+                        </div>
+                        <div class="source-body">
+                            <div class="setting-group">
+                                <label><input type="checkbox" id="confluence-enabled"> Включить синхронизацию</label>
+                            </div>
+                            <div class="setting-group">
+                                <label>Base URL:</label>
+                                <input type="text" id="confluence-base-url" class="setting-input" placeholder="https://your-domain.atlassian.net/wiki">
+                            </div>
+                            <div class="setting-group">
+                                <label>Email:</label>
+                                <input type="email" id="confluence-email" class="setting-input" placeholder="admin@company.com">
+                            </div>
+                            <div class="setting-group">
+                                <label>API Token:</label>
+                                <input type="password" id="confluence-api-token" class="setting-input" placeholder="Ваш API токен из Atlassian">
+                                <small>Создайте токен в <a href="https://id.atlassian.com/manage-profile/security/api-tokens" target="_blank">Atlassian Account → API tokens</a></small>
+                            </div>
+                            <div class="setting-group">
+                                <label>Пространство (опционально):</label>
+                                <input type="text" id="confluence-space-key" class="setting-input" placeholder="HR">
+                            </div>
+                            <div class="card-actions">
+                                <button class="btn-secondary" id="test-confluence">Проверить подключение</button>
+                                <button class="btn-primary" id="save-confluence">Сохранить</button>
+                            </div>
+                            <div class="source-meta" id="confluence-meta" style="display:none;">
+                                <p>Последняя синхронизация: <span id="confluence-last-sync">—</span></p>
+                                <button class="btn-secondary" id="sync-confluence">Запустить синхронизацию</button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </section>
-
         </main>
     </div>
 
@@ -338,12 +373,9 @@
                     <input type="file" id="fileInput" multiple accept=".pdf,.docx,.doc,.txt" style="display: none;">
                 </div>
                 
-                <!-- Добавляем превью файлов -->
                 <div id="uploadPreview" class="upload-preview" style="display: none;">
                     <h5>Выбранные файлы:</h5>
-                    <div id="filePreviews" class="file-previews">
-                        <!-- Превью файлов будут добавляться здесь -->
-                    </div>
+                    <div id="filePreviews" class="file-previews"></div>
                 </div>
                 
                 <div class="supported-formats">
@@ -357,7 +389,6 @@
         </div>
     </div>
 
-    <script src="js/app.js"></script>
-    <script src="js/integrations.js"></script>
+    <script type="module" src="js/app.js"></script>
 </body>
 </html>

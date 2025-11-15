@@ -1,4 +1,4 @@
-// frontend/js/integrations.js
+// frontend/js/Integrations.js
 
 class IntegrationsManager {
     constructor(appInstance) {
@@ -35,7 +35,7 @@ class IntegrationsManager {
             webhookInput.addEventListener('click', () => {
                 webhookInput.select();
                 navigator.clipboard?.writeText(webhookInput.value)
-                    .then(() => this.app.showNotification('URL скопирован', 'info'))
+                    .then(() => Notification.show('URL скопирован', 'info'))
                     .catch(() => {});
             });
         }
@@ -72,7 +72,7 @@ class IntegrationsManager {
             }
         } catch (err) {
             console.error('Ошибка загрузки интеграций:', err);
-            this.app.showNotification('Не удалось загрузить данные интеграций', 'error');
+            Notification.show('Не удалось загрузить данные интеграций', 'error');
         }
     }
 
@@ -91,19 +91,19 @@ class IntegrationsManager {
         if (name === 'telegram') {
             const token = document.getElementById('telegram-bot-token')?.value?.trim();
             if (!token) {
-                this.app.showNotification('Введите токен Telegram бота', 'warning');
+                Notification.show('Введите токен Telegram бота', 'warning');
                 return;
             }
             payload = { telegram: { bot_token: token } };
         } else if (name === 'bitrix24') {
             const secret = document.getElementById('bitrix24-secret')?.value?.trim();
             if (!secret) {
-                this.app.showNotification('Введите Client Secret из Bitrix24', 'warning');
+                Notification.show('Введите Client Secret из Bitrix24', 'warning');
                 return;
             }
             payload = { bitrix24: { client_secret: secret } };
         } else {
-            this.app.showNotification('Неизвестная интеграция', 'error');
+            Notification.show('Неизвестная интеграция', 'error');
             return;
         }
 
@@ -115,21 +115,21 @@ class IntegrationsManager {
             });
 
             if (res.ok) {
-                this.app.showNotification(`✅ Настройки ${name} сохранены`, 'success');
+                Notification.show(`✅ Настройки ${name} сохранены`, 'success');
                 await this.loadIntegrationsStatus(); // обновить статус
             } else {
                 const errText = await res.text();
-                this.app.showNotification(`❌ Ошибка сохранения: ${errText}`, 'error');
+                Notification.show(`❌ Ошибка сохранения: ${errText}`, 'error');
             }
         } catch (err) {
             console.error(`Ошибка сохранения ${name}:`, err);
-            this.app.showNotification(`Не удалось сохранить настройки ${name}`, 'error');
+            Notification.show(`Не удалось сохранить настройки ${name}`, 'error');
         }
     }
 
     async testIntegration(name) {
         if (name === 'telegram') {
-            this.app.showNotification('Тест Telegram: отправьте сообщение боту', 'info');
+            Notification.show('Тест Telegram: отправьте сообщение боту', 'info');
             return;
         }
 
@@ -138,17 +138,19 @@ class IntegrationsManager {
                 const res = await fetch('/bitrix24/test', { method: 'POST' });
                 const data = await res.json();
                 if (data.test_result?.success) {
-                    this.app.showNotification('✅ Bitrix24: тест пройден', 'success');
+                    Notification.show('✅ Bitrix24: тест пройден', 'success');
                 } else {
-                    this.app.showNotification('❌ Bitrix24: тест не удался', 'error');
+                    Notification.show('❌ Bitrix24: тест не удался', 'error');
                 }
             } catch (err) {
                 console.error('Bitrix24 test error:', err);
-                this.app.showNotification('Ошибка при тестировании Bitrix24', 'error');
+                Notification.show('Ошибка при тестировании Bitrix24', 'error');
             }
             return;
         }
 
-        this.app.showNotification(`Тест для ${name} недоступен`, 'warning');
+        Notification.show(`Тест для ${name} недоступен`, 'warning');
     }
 }
+
+export { IntegrationsManager };

@@ -104,6 +104,71 @@ async def sync_bitrix24_kb():
         logger.error(f"Ошибка синхронизации Bitrix24 KB: {e}")
         return {"status": "error", "message": str(e)}
 
+async def sync_confluence():
+    """Синхронизирует статьи из Confluence"""
+    settings = load_settings()
+    conf = settings.knowledge_sources.get("confluence", {})
+    
+    if not (conf.get("enabled") and conf.get("base_url") and conf.get("email") and conf.get("api_token")):
+        logger.warning("Confluence sync skipped: not configured")
+        return {"status": "skipped", "reason": "not configured"}
+
+    base_url = conf["base_url"].rstrip("/")
+    if not base_url.startswith("https://"):
+        base_url = f"https://{base_url}"
+
+    space_param = f"&spaceKey={conf['space_key']}" if conf.get("space_key") else ""
+    last_sync = conf.get("last_sync")
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0, auth=(conf["email"], conf["api_token"])) as client:
+            # Получаем все страницы
+            url = f"{base_url}/rest/api/content?expand=version,history,type&limit=250{space_param}"
+            articles_synced = 0
+
+            while url:
+                resp = await client.get(url)
+                resp.raise_for_status()
+                data = resp.json()
+
+                for page in data.get("results", []):
+                    if page.get("type") != "page":
+                        continue
+                    last_modified = page["history"]["lastUpdated"]["when"]
+                    if last_sync and last_modified <= last_sync:
+                        continue
+
+                    # Получаем полный текст
+                    content_resp = await client.get(
+                        f"{base_url}/rest/api/content/{page['id']}?expand=body.storage"
+                    )
+                    content_resp.raise_for_status()
+                    html = content_resp.json()["body"]["storage"]["value"]
+                    
+                    from bs4 import BeautifulSoup
+                    text = BeautifulSoup(html, "html.parser").get_text()
+                    source = f"confluence:{page['id']}"
+                    
+                    await index_text_content(text, source, "all")
+                    articles_synced += 1
+
+                url = None
+                if "next" in data.get("_links", {}):
+                    url = base_url + data["_links"]["next"]
+
+            # Обновляем last_sync
+            now = datetime.now(timezone.utc).isoformat()
+            conf["last_sync"] = now
+            settings.knowledge_sources["confluence"] = conf
+            save_settings(settings)
+
+            logger.info(f"Синхронизировано {articles_synced} статей из Confluence")
+            return {"status": "ok", "synced": articles_synced}
+
+    except Exception as e:
+        logger.error(f"Ошибка синхронизации Confluence: {e}")
+        return {"status": "error", "message": str(e)}
+
 # Инициализация FastAPI
 app = FastAPI(title="Znatok API", version="0.1.0")
 
@@ -461,4 +526,23 @@ async def get_bitrix24_kb_status():
         "domain": kb.get("domain"),
         "last_sync": kb.get("last_sync"),
         "configured": bool(kb.get("domain") and kb.get("access_token"))
+    }
+
+@app.post("/api/sources/confluence/sync")
+async def trigger_confluence_sync():
+    result = await sync_confluence()
+    if result["status"] == "error":
+        raise HTTPException(status_code=500, detail=result["message"])
+    return result
+
+@app.get("/api/sources/confluence/status")
+async def get_confluence_status():
+    settings = load_settings()
+    conf = settings.knowledge_sources.get("confluence", {})
+    return {
+        "enabled": conf.get("enabled", False),
+        "base_url": conf.get("base_url"),
+        "space_key": conf.get("space_key"),
+        "last_sync": conf.get("last_sync"),
+        "configured": bool(conf.get("base_url") and conf.get("email") and conf.get("api_token"))
     }
