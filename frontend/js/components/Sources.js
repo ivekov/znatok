@@ -12,10 +12,12 @@ export class Sources {
         // Bitrix24 KB
         document.getElementById('save-bitrix24-kb')?.addEventListener('click', () => this.saveBitrix24KB());
         document.getElementById('sync-bitrix24-kb')?.addEventListener('click', () => this.syncBitrix24KB());
+        document.getElementById('test-bitrix24-kb')?.addEventListener('click', () => this.testBitrix24KB());
 
         // Confluence
         document.getElementById('save-confluence')?.addEventListener('click', () => this.saveConfluence());
         document.getElementById('sync-confluence')?.addEventListener('click', () => this.syncConfluence());
+        document.getElementById('test-confluence')?.addEventListener('click', () => this.testConfluence());
     }
 
     async loadStatus() {
@@ -165,6 +167,68 @@ export class Sources {
             }
         } catch (e) {
             Notification.show('❌ Ошибка синхронизации Confluence', 'error');
+        }
+    }
+
+    async testConfluence() {
+        const base_url = document.getElementById('confluence-base-url').value.trim();
+        const email = document.getElementById('confluence-email').value.trim();
+        const token = document.getElementById('confluence-api-token').value.trim();
+
+        if (!base_url || !email || !token) {
+            Notification.show('Заполните все поля', 'warning');
+            return;
+        }
+
+        try {
+            Notification.show('Проверка подключения к Confluence...', 'info');
+            const cleanUrl = base_url.replace(/\/$/, "");
+            const testUrl = `${cleanUrl}/rest/api/space?limit=1`;
+
+            const resp = await fetch(testUrl, {
+                method: 'GET',
+                headers: {
+                    'Authorization': 'Basic ' + btoa(`${email}:${token}`)
+                }
+            });
+
+            if (resp.ok) {
+                Notification.show('✅ Подключение к Confluence успешно', 'success');
+            } else {
+                const text = await resp.text();
+                Notification.show(`❌ Ошибка (${resp.status}): ${text.substring(0, 100)}`, 'error');
+            }
+        } catch (e) {
+            Notification.show(`❌ Ошибка сети: ${e.message}`, 'error');
+        }
+    }
+
+    async testBitrix24KB() {
+        const domain = document.getElementById('bitrix24-domain').value.trim();
+        const token = document.getElementById('bitrix24-access-token').value.trim();
+
+        if (!domain || !token) {
+            Notification.show('Заполните домен и токен', 'warning');
+            return;
+        }
+
+        try {
+            Notification.show('Проверка подключения к Bitrix24...', 'info');
+            const url = `https://${domain}/rest/crm/knowledge-base/article.list`;
+            const resp = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ auth: token })
+            });
+
+            if (resp.ok) {
+                Notification.show('✅ Подключение к Bitrix24 успешно', 'success');
+            } else {
+                const data = await resp.json();
+                Notification.show(`❌ Ошибка: ${data.error || 'неизвестная'}`, 'error');
+            }
+        } catch (e) {
+            Notification.show(`❌ Ошибка сети: ${e.message}`, 'error');
         }
     }
 }
