@@ -598,3 +598,34 @@ async def get_confluence_status():
         "last_sync": conf.get("last_sync"),
         "configured": configured
     }
+
+@app.post("/api/sources/confluence/test")
+async def test_confluence_connection(request: Request):
+    data = await request.json()
+    base_url = data.get("base_url", "").rstrip("/")
+    email = data.get("email")
+    token = data.get("token")
+
+    if not (base_url and email and token):
+        raise HTTPException(status_code=400, detail="Missing credentials")
+
+    if not base_url.startswith("https://"):
+        base_url = f"https://{base_url}"
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(
+                f"{base_url}/rest/api/space?limit=1",
+                auth=(email, token)
+            )
+            if resp.status_code == 200:
+                return {"status": "ok"}
+            elif resp.status_code == 401:
+                raise HTTPException(status_code=401, detail="Неверные email или API token")
+            elif resp.status_code == 404:
+                raise HTTPException(status_code=400, detail="Неверный Base URL или SpaceKey")
+            else:
+                raise HTTPException(status_code=500, detail=f"Confluence error: {resp.status_code}")
+    except Exception as e:
+        logger.error(f"Confluence test error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
