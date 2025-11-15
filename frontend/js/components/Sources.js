@@ -185,10 +185,11 @@ export class Sources {
             const cleanUrl = base_url.replace(/\/$/, "");
             const testUrl = `${cleanUrl}/rest/api/space?limit=1`;
 
+            const credentials = base64EncodeUnicode(`${email}:${token}`);
             const resp = await fetch(testUrl, {
                 method: 'GET',
                 headers: {
-                    'Authorization': 'Basic ' + btoa(`${email}:${token}`)
+                    'Authorization': 'Basic ' + credentials
                 }
             });
 
@@ -232,3 +233,11 @@ export class Sources {
         }
     }
 }
+
+    function base64EncodeUnicode(str) {
+        return btoa(
+            encodeURIComponent(str).replace(/%([0-9A-F]{2})/g, (match, p1) => {
+                return String.fromCharCode(parseInt(p1, 16));
+            })
+        );
+    }
