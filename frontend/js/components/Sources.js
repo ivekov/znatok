@@ -171,6 +171,7 @@ export class Sources {
     }
 
     async testConfluence() {
+        // Делаем запрос НА БЭКЕНД, а не в Confluence напрямую
         const base_url = document.getElementById('confluence-base-url').value.trim();
         const email = document.getElementById('confluence-email').value.trim();
         const token = document.getElementById('confluence-api-token').value.trim();
@@ -182,25 +183,19 @@ export class Sources {
 
         try {
             Notification.show('Проверка подключения к Confluence...', 'info');
-            const cleanUrl = base_url.replace(/\/$/, "");
-            const testUrl = `${cleanUrl}/rest/api/space?limit=1`;
-
-            const credentials = base64EncodeUnicode(`${email}:${token}`);
-            const resp = await fetch(testUrl, {
-                method: 'GET',
-                headers: {
-                    'Authorization': 'Basic ' + credentials
-                }
+            const resp = await fetch('/api/sources/confluence/test', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ base_url, email, token })
             });
-
+            const data = await resp.json();
             if (resp.ok) {
-                Notification.show('✅ Подключение к Confluence успешно', 'success');
+                Notification.show('✅ Подключение успешно', 'success');
             } else {
-                const text = await resp.text();
-                Notification.show(`❌ Ошибка (${resp.status}): ${text.substring(0, 100)}`, 'error');
+                Notification.show(`❌ ${data.detail || 'Ошибка подключения'}`, 'error');
             }
         } catch (e) {
-            Notification.show(`❌ Ошибка сети: ${e.message}`, 'error');
+            Notification.show(`❌ ${e.message}`, 'error');
         }
     }
 
