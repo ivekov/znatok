@@ -3,6 +3,7 @@ import os
 import logging
 import asyncio
 import httpx
+from bs4 import BeautifulSoup
 from typing import List, Optional, Dict, Any
 from fastapi import FastAPI, HTTPException, File, UploadFile, Form, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -105,17 +106,11 @@ async def sync_bitrix24_kb():
         return {"status": "error", "message": str(e)}
 
 async def sync_confluence():
-    """Синхронизирует статьи из Confluence с надёжной пагинацией и обработкой ошибок"""
     settings = load_settings()
     ks = settings.knowledge_sources or {}
     conf = ks.get("confluence", {})
     
-    if not (
-        conf.get("enabled") and 
-        conf.get("base_url") and 
-        conf.get("email") and 
-        conf.get("api_token")
-    ):
+    if not (conf.get("enabled") and conf.get("base_url") and conf.get("email") and conf.get("api_token")):
         logger.warning("Confluence sync skipped: not configured")
         return {"status": "skipped", "reason": "not configured"}
 
@@ -131,11 +126,10 @@ async def sync_confluence():
         articles_synced = 0
         start = 0
         limit = 250
+        total_pages = 0
 
         async with httpx.AsyncClient(timeout=30.0) as client:
             while True:
-                # Формируем URL с пагинацией
-                url = f"{base_url}/rest/api/content"
                 params = {
                     "type": "page",
                     "expand": "version,history,body.storage",
@@ -145,11 +139,11 @@ async def sync_confluence():
                 if space_key:
                     params["spaceKey"] = space_key
 
-                resp = await client.get(url, auth=auth, params=params)
+                resp = await client.get(f"{base_url}/rest/api/content", auth=auth, params=params)
                 if resp.status_code == 401:
-                    raise ValueError("Неверные учётные данные Confluence (email или API token)")
+                    raise ValueError("401: Неверные email или API token")
                 if resp.status_code == 404:
-                    raise ValueError("Не найден указанный SpaceKey или неверный Base URL")
+                    raise ValueError(f"404: Проверьте Base URL и SpaceKey ({space_key})")
                 resp.raise_for_status()
 
                 data = resp.json()
@@ -157,60 +151,71 @@ async def sync_confluence():
                 if not results:
                     break
 
+                total_pages += len(results)
+                logger.info(f"Получено {len(results)} страниц (всего: {total_pages})")
+
                 for page in results:
-                    # Безопасное извлечение даты последнего обновления
+                    title = page.get("title", "Без названия")
+                    page_id = page.get("id", "unknown")
+
+                    # === ОПРЕДЕЛЕНИЕ ДАТЫ ===
                     last_modified = None
                     history = page.get("history") or {}
                     last_updated = history.get("lastUpdated")
                     if last_updated and isinstance(last_updated, dict):
                         last_modified = last_updated.get("when")
-                    elif history.get("created") and isinstance(history["created"], dict):
-                        # fallback: используем дату создания, если нет lastUpdated
-                        last_modified = history["created"].get("when")
+                    else:
+                        # Для Confluence Cloud: дата в корне страницы
+                        last_modified = page.get("version", {}).get("when")
 
-                    # Пропускаем, если не изменилась с последней синхронизации
-                    if last_sync and last_modified and last_modified <= last_sync:
+                    logger.info(f"Страница: {title} (ID: {page_id}), lastModified: {last_modified}, last_sync: {last_sync}")
+
+                    # === ФИЛЬТРАЦИЯ ===
+                    if last_sync:
+                        if not last_modified:
+                            logger.warning(f"Пропускаем страницу {page_id}: не удалось определить дату")
+                            continue
+                        if last_modified <= last_sync:
+                            logger.debug(f"Пропускаем: {title} (не изменилась)")
+                            continue
+                    # Если last_sync нет — берем ВСЁ
+
+                    # === ИЗВЛЕЧЕНИЕ ТЕКСТА ===
+                    body = page.get("body", {}).get("storage", {}).get("value", "")
+                    if not body:
+                        logger.warning(f"Пропускаем страницу {page_id}: пустое тело")
                         continue
 
-                    # Извлекаем текст
-                    body = page.get("body") or {}
-                    storage = body.get("storage") or {}
-                    html = storage.get("value") or ""
-                    
-                    if not html.strip():
-                        logger.warning(f"Страница {page['id']} пустая, пропускаем")
+                    from bs4 import BeautifulSoup
+                    soup = BeautifulSoup(body, "html.parser")
+                    text = soup.get_text(separator="\n", strip=True)
+                    if not text:
+                        logger.warning(f"Пропускаем страницу {page_id}: не удалось извлечь текст")
                         continue
 
-                    text = BeautifulSoup(html, "html.parser").get_text(separator="\n", strip=True)
-                    if not text.strip():
-                        logger.warning(f"Текст страницы {page['id']} не извлечён, пропускаем")
-                        continue
+                    source = f"confluence:{page_id}"
+                    await index_text_content(text, source, "all")
+                    articles_synced += 1
+                    logger.info(f"✅ Индексирована: {title}")
 
-                    source = f"confluence:{page['id']}"
-                    try:
-                        await index_text_content(text, source, "all")
-                        articles_synced += 1
-                    except Exception as e:
-                        logger.error(f"Ошибка индексации страницы {page['id']}: {e}")
-                        continue
-
-                # Проверка окончания пагинации
                 if len(results) < limit:
                     break
                 start += limit
 
-            # Обновляем last_sync только при успешной синхронизации
+            # Обязательно обновляем last_sync, даже если 0 статей
+            from datetime import datetime, timezone
             conf["last_sync"] = datetime.now(timezone.utc).isoformat()
             settings.knowledge_sources["confluence"] = conf
             save_settings(settings)
 
-            logger.info(f"✅ Синхронизировано {articles_synced} статей из Confluence")
-            return {"status": "ok", "synced": articles_synced}
+            logger.info(f"✅ Синхронизация завершена. Всего страниц: {total_pages}, проиндексировано: {articles_synced}")
+            return {"status": "ok", "synced": articles_synced, "total": total_pages}
 
     except Exception as e:
         error_msg = str(e)
         logger.error(f"❌ Ошибка синхронизации Confluence: {error_msg}")
         return {"status": "error", "message": error_msg}
+    
 
 # Инициализация FastAPI
 app = FastAPI(title="Znatok API", version="0.1.0")
