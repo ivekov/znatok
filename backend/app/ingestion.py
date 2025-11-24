@@ -38,7 +38,7 @@ def ensure_collection_exists(collection_name: str):
             vectors_config=VectorParams(size=384, distance=Distance.COSINE)  # ← 384 вместо 1024
         )
 
-def chunk_text(text: str, max_length: int = 512) -> List[str]:
+def chunk_text(text: str, max_length: int = 1024) -> List[str]:
     import re
     if not text.strip():
         return []
@@ -172,16 +172,14 @@ async def index_text_content(text: str, source: str, department: str = "all"):
     points = []
     uploaded_at = datetime.utcnow().isoformat()
     for chunk, emb in zip(chunks, embeddings):
-        points.append(PointStruct(
-            id=str(uuid.uuid4()),
-            vector=emb,
-            payload={
-                "text": chunk,
-                "source": source,
-                "department": department,
-                "uploaded_at": uploaded_at
-            }
-        ))
+        payload = {
+            "text": chunk,
+            "source": source,  # ← теперь это URL
+            "department": department,
+            "uploaded_at": uploaded_at
+        }
+        # Можно добавить метаданные, если нужно
+        points.append(PointStruct(id=str(uuid.uuid4()), vector=emb, payload=payload))
 
     collection = os.getenv("QDRANT_COLLECTION", "znatok_chunks")
     ensure_collection_exists(collection)

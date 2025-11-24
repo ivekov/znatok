@@ -136,6 +136,7 @@
                             <option value="gigachat">GigaChat (SberBank)</option>
                             <option value="yandex_gpt">Yandex GPT</option>
                             <option value="mistral">Mistral AI</option>
+                            <option value="ollama">Ollama (Локальная модель)</option>
                         </select>
                     </div>
 
@@ -180,6 +181,22 @@
                                 <option value="mistral-medium" selected>mistral-medium</option>
                                 <option value="mistral-large">mistral-large</option>
                             </select>
+                        </div>
+                    </div>
+
+                    <!-- Настройки Ollama -->
+                    <div id="ollama-settings" class="provider-settings">
+                        <div class="setting-group">
+                            <label for="ollama-base-url">Base URL:</label>
+                            <input type="text" id="ollama-base-url" class="setting-input" 
+                                placeholder="http://localhost:11434">
+                            <small>Адрес вашего Ollama-сервера (обычно <code>http://host:11434</code>)</small>
+                        </div>
+                        <div class="setting-group">
+                            <label for="ollama-model">Модель:</label>
+                            <input type="text" id="ollama-model" class="setting-input" 
+                                placeholder="mistral, llama3, и т.д.">
+                            <small>Имя модели в Ollama. Загрузите командой: <code>ollama pull mistral</code></small>
                         </div>
                     </div>
 

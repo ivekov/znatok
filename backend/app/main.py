@@ -156,7 +156,9 @@ async def sync_confluence():
 
                 for page in results:
                     title = page.get("title", "Без названия")
-                    page_id = page.get("id", "unknown")
+                    page_id = page["id"]
+                    base_url_clean = base_url.rstrip("/")
+                    page_link = f"{base_url_clean}/pages/viewpage.action?pageId={page_id}"
 
                     # === ОПРЕДЕЛЕНИЕ ДАТЫ ===
                     last_modified = None
@@ -193,8 +195,12 @@ async def sync_confluence():
                         logger.warning(f"Пропускаем страницу {page_id}: не удалось извлечь текст")
                         continue
 
-                    source = f"confluence:{page_id}"
-                    await index_text_content(text, source, "all")
+                    # source = f"confluence:{page_id}"
+                    await index_text_content(
+                        text=text,
+                        source=page_link,                      # ← вместо "confluence:123"
+                        department="all",
+                    )
                     articles_synced += 1
                     logger.info(f"✅ Индексирована: {title}")
 
@@ -230,7 +236,12 @@ app.add_middleware(
 )
 
 # Импорты модулей
-from .ingestion import index_document, delete_document_from_qdrant, get_qdrant_client
+from .ingestion import (
+    index_document, 
+    delete_document_from_qdrant, 
+    get_qdrant_client, 
+    index_text_content  # ← добавьте эту строку
+)
 from .rag import search_qdrant, get_llm_response
 from .models import ProviderType, ProviderConfig, Settings, load_settings, save_settings
 
@@ -634,3 +645,38 @@ async def test_confluence_connection(request: Request):
     except Exception as e:
         logger.error(f"Confluence test error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+    
+@app.get("/api/documents/{source_id_or_url}")
+async def get_document_content(source_id_or_url: str):
+    """
+    Возвращает содержимое документа по его source (URL или ID)
+    """
+    try:
+        client = get_qdrant_client()
+        collection = os.getenv("QDRANT_COLLECTION", "znatok_chunks")
+        
+        # Ищем по точному совпадению source
+        response = client.scroll(
+            collection_name=collection,
+            scroll_filter=Filter(
+                must=[FieldCondition(key="source", match=MatchValue(value=source_id_or_url))]
+            ),
+            limit=1000,
+            with_payload=True
+        )
+        
+        if not response[0]:
+            raise HTTPException(status_code=404, detail="Документ не найден")
+        
+        # Собираем весь текст
+        full_text = "\n\n".join([point.payload["text"] for point in response[0]])
+        filename = response[0][0].payload.get("source", "документ")
+        
+        return {
+            "filename": filename,
+            "content": full_text,
+            "source_url": filename if filename.startswith("http") else None
+        }
+    except Exception as e:
+        logger.error(f"Ошибка получения документа: {e}")
+        raise HTTPException(status_code=500, detail="Failed to load document")
