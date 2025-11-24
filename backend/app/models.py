@@ -12,6 +12,7 @@ class ProviderType(str, Enum):
     GIGACHAT = "gigachat"
     YANDEX_GPT = "yandex_gpt"
     MISTRAL = "mistral"
+    OLLAMA = "ollama"
 
 class ProviderConfig(BaseModel):
     provider: ProviderType

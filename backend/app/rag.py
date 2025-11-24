@@ -129,39 +129,32 @@ class YandexGPTProvider(LLMProvider):
                 logger.error(f"Yandex GPT API error: {e}")
                 raise
 
-class MistralProvider(LLMProvider):
+class OllamaProvider(LLMProvider):
     async def generate_response(self, prompt: str) -> str:
-        api_key = self.config.api_key
-        if not api_key:
-            raise ValueError("MISTRAL_API_KEY не задан в настройках")
-        
+        base_url = self.config.base_url or "http://localhost:11434"
+        model = self.config.model or "mistral"
+        temperature = self.config.temperature
+        max_tokens = self.config.max_tokens
+
         async with httpx.AsyncClient() as client:
             try:
                 resp = await client.post(
-                    "https://api.mistral.ai/v1/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {api_key}",
-                        "Content-Type": "application/json"
-                    },
+                    f"{base_url.rstrip('/')}/api/generate",
                     json={
-                        "model": self.config.model or "mistral-medium",
-                        "messages": [
-                            {
-                                "role": "system",
-                                "content": "Ты — корпоративный ассистент. Отвечай кратко и по делу на русском языке."
-                            },
-                            {"role": "user", "content": prompt}
-                        ],
-                        "temperature": self.config.temperature,
-                        "max_tokens": self.config.max_tokens
+                        "model": model,
+                        "prompt": prompt,
+                        "stream": False,
+                        "options": {
+                            "temperature": temperature,
+                            "num_predict": max_tokens
+                        }
                     },
-                    timeout=30.0
+                    timeout=60.0
                 )
                 resp.raise_for_status()
-                result = resp.json()
-                return result["choices"][0]["message"]["content"].strip()
+                return resp.json()["response"].strip()
             except Exception as e:
-                logger.error(f"Mistral API error: {e}")
+                logger.error(f"Ollama API error: {e}")
                 raise
 
 # ======================
@@ -182,9 +175,10 @@ def get_llm_provider():
         return YandexGPTProvider(provider_config)
     elif provider_type == ProviderType.MISTRAL:
         return MistralProvider(provider_config)
+    elif provider_type == ProviderType.OLLAMA:  # ← добавлено
+        return OllamaProvider(provider_config)
     else:
         raise ValueError(f"Неизвестный провайдер: {provider_type}")
-
 # ======================
 # Updated RAG functions
 # ======================
@@ -247,9 +241,8 @@ def search_qdrant(question: str, department: Optional[str] = None) -> List[dict]
                 "score": hit.score
             }
             for hit in search_result
-            if hit.score > 0.3  # ← критически важное условие
+            if hit.score > 0.3  # ← было 0.6, теперь 0.3
         ]
-
         return filtered_hits
 
     except Exception as e:

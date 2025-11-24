@@ -28,13 +28,14 @@ export class Settings {
             const map = {
                 gigachat: { key: 'gigachat-api-key', model: 'gigachat-model' },
                 yandex_gpt: { key: 'yandex-api-key', model: 'yandex-model' },
-                mistral: { key: 'mistral-api-key', model: 'mistral-model' }
+                mistral: { key: 'mistral-api-key', model: 'mistral-model' },
+                ollama: { key: 'ollama-base-url', model: 'ollama-model' } // ← добавлено
             };
 
             for (const [provider, config] of Object.entries(settings.providers || {})) {
                 const el = map[provider];
                 if (el) {
-                    document.getElementById(el.key).value = config.api_key || '';
+                    document.getElementById(el.key).value = config.base_url || config.api_key || '';
                     document.getElementById(el.model).value = config.model || '';
                 }
             }
@@ -75,10 +76,16 @@ export class Settings {
                 model: getVal('mistral-model'),
                 temperature: parseFloat(getVal('temperature')) || 0.1,
                 max_tokens: parseInt(getVal('max-tokens')) || 512
+            },
+            ollama: { // ← добавлено
+                provider: 'ollama',
+                base_url: getVal('ollama-base-url'),
+                model: getVal('ollama-model'),
+                temperature: parseFloat(getVal('temperature')) || 0.1,
+                max_tokens: parseInt(getVal('max-tokens')) || 512
             }
         };
 
-        // Сохраняем интеграции, чтобы не затереть
         const integrations = (await ApiClient.get('/api/integrations')).integrations || {
             telegram: { bot_token: null },
             bitrix24: { client_secret: null }
